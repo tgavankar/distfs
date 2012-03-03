@@ -33,6 +33,65 @@ import storage.*;
  */
 public class NamingServer implements Service, Registration
 {
+    FsNode fsRoot;
+    Skeleton<Service> clientSkeleton;
+    Skeleton<Registration> regisSkeleton;
+	
+    
+    private class FsNode {
+    	HashMap<String, FsNode> children;
+    	String name;
+    	boolean isFile;
+    	private Storage s;
+		private Command c;
+    	
+    	public FsNode(String n) {
+    		// Node for directory
+    		children = new HashMap<String, FsNode>();
+    		name = n;
+    		isFile = false;
+    		s = null;
+    		c = null;
+    	}
+    	
+    	public FsNode(String n, Storage s, Command c) {
+    		// Node for file
+    		children = null;
+    		name = n;
+    		isFile = true;
+    		this.s = s;
+    		this.c = c;
+    	}
+    	
+    	public String getName() {
+    		return name;
+    	}
+    	
+    	public FsNode getChild(String name) {
+    		return children.get(name);
+    	}
+    	
+    	public HashMap<String, FsNode> getChildren() {
+    		return children;
+    	}
+    	
+    	public void addChild(String name, FsNode child) {
+    		children.put(name, child);
+    	}
+    	
+    	public boolean isFile() {
+    		return isFile;
+    	}
+    	
+    	public Storage getStorage() {
+			return s;
+		}
+		
+		public Command getCommand() {
+			return c;
+		}
+    }
+    
     /** Creates the naming server object.
 
         <p>
@@ -40,7 +99,10 @@ public class NamingServer implements Service, Registration
      */
     public NamingServer()
     {
-        throw new UnsupportedOperationException("not implemented");
+        fsRoot = new FsNode("");
+    	clientSkeleton = new Skeleton<Service>(Service.class, this);
+    	regisSkeleton = new Skeleton<Registration>(Registration.class, this);
+
     }
 
     /** Starts the naming server.
@@ -56,7 +118,9 @@ public class NamingServer implements Service, Registration
      */
     public synchronized void start() throws RMIException
     {
-        throw new UnsupportedOperationException("not implemented");
+    	clientSkeleton.start();
+    	regisSkeleton.start();
+        
     }
 
     /** Stops the naming server.
@@ -87,7 +151,7 @@ public class NamingServer implements Service, Registration
     }
 
     // The following public methods are documented in Service.java.
-    @Override
+    /*@Override
     public void lock(Path path, boolean exclusive) throws FileNotFoundException
     {
         throw new UnsupportedOperationException("not implemented");
@@ -97,18 +161,37 @@ public class NamingServer implements Service, Registration
     public void unlock(Path path, boolean exclusive)
     {
         throw new UnsupportedOperationException("not implemented");
-    }
+    }*/
 
     @Override
     public boolean isDirectory(Path path) throws FileNotFoundException
     {
-        throw new UnsupportedOperationException("not implemented");
+		FsNode current = fsRoot;
+        
+        for(String p : path) {
+        	current = current.getChild(p);
+        	if(current == null) {
+        		throw new FileNotFoundException();
+        	}
+        }
+    	
+        return !current.isFile();
     }
 
     @Override
     public String[] list(Path directory) throws FileNotFoundException
     {
-        throw new UnsupportedOperationException("not implemented");
+        if(!isDirectory(directory)) {
+        	throw new FileNotFoundException();
+        }
+        
+        FsNode current = fsRoot;
+        
+        for(String p : directory) {
+        	current = current.getChild(p);
+        }
+        
+        return (String[]) current.getChildren().keySet().toArray();
     }
 
     @Override
@@ -121,19 +204,49 @@ public class NamingServer implements Service, Registration
     @Override
     public boolean createDirectory(Path directory) throws FileNotFoundException
     {
-        throw new UnsupportedOperationException("not implemented");
+    	// Should this be an RMI call to do it serverside too?
+    	isDirectory(directory.parent());  // We want the throwing of FileNotFoundException if it's not
+    	
+    	FsNode parent = fsRoot;
+    	FsNode current;
+        for(String p : directory) {
+        	current = parent.getChild(p);
+        	if(current == null) {
+    			parent.addChild(p, new FsNode(p));
+    			return true;
+
+        	}
+        	if(current.getName().equals(directory.last())) {
+        		return false;
+        	}
+        	parent = current;
+        }
+        return false;
     }
 
     @Override
     public boolean delete(Path path) throws FileNotFoundException
     {
-        throw new UnsupportedOperationException("not implemented");
+    	throw new UnsupportedOperationException("not implemented");
     }
 
     @Override
     public Storage getStorage(Path file) throws FileNotFoundException
     {
-        throw new UnsupportedOperationException("not implemented");
+        FsNode current = fsRoot;
+        
+        for(String p : file) {
+        	current = current.getChild(p);
+        	if(current == null) {
+        		throw new FileNotFoundException();
+        	}
+        }
+    	
+        if(!current.isFile()) {
+        	throw new FileNotFoundException();
+        }
+        
+    	return current.getStorage();
     }
 
     // The method register is documented in Registration.java.
@@ -141,6 +254,45 @@ public class NamingServer implements Service, Registration
     public Path[] register(Storage client_stub, Command command_stub,
                            Path[] files)
     {
-        throw new UnsupportedOperationException("not implemented");
+		ArrayList<Path> dupeFiles = new ArrayList<Path>();
+        
+		for(int i=0; i<files.length; i++) {
+			FsNode current = fsRoot;
+			boolean isDupe = false;
+	        for(String p : files[i]) {
+	        	current = current.getChild(p);
+	        	if(current == null) {
+	        		break;
+	        	}
+	        	if(current.isFile()) {
+	        		isDupe = true;
+	        	}
+	        }
+	        
+        	if(isDupe) {
+        		// Dupe found, add to return list and go to next one
+        		dupeFiles.add(files[i]);
+        		continue;
+        	}
+        	
+        	// New file, so add to file tree
+        	FsNode parent = fsRoot;
+	        for(String p : files[i]) {
+	        	current = parent.getChild(p);
+	        	if(current == null) {
+	        		FsNode newNode;
+	        		if(p.equals(files[i].last())) {
+	        			newNode = new FsNode(p, client_stub, command_stub);
+	        		}
+	        		else {
+	        			newNode = new FsNode(p);
+	        		}
+	        		parent.addChild(p, newNode);
+	        	}
+	        	parent = current;
+	        }
+        }
+        
+    	return (Path[]) dupeFiles.toArray();
     }
 }

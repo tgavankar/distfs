@@ -25,6 +25,7 @@ public class StorageServer implements Storage, Command
 
         @param root Directory on the local filesystem. The contents of this
                     directory will be accessible through the storage server.
+                    MAY NOT BE ABSOLUTE.
         @param client_port Port to use for the client interface, or zero if the
                            system should decide the port.
         @param command_port Port to use for the command interface, or zero if
@@ -36,7 +37,7 @@ public class StorageServer implements Storage, Command
         throw new UnsupportedOperationException("not implemented");
     }
 
-    /** Creats a storage server, given a directory on the local filesystem.
+    /** Creates a storage server, given a directory on the local filesystem.
 
         <p>
         This constructor is equivalent to
@@ -45,6 +46,7 @@ public class StorageServer implements Storage, Command
 
         @param root Directory on the local filesystem. The contents of this
                     directory will be accessible through the storage server.
+                    MAY NOT BE ABSOLUTE.
         @throws NullPointerException If <code>root</code> is <code>null</code>.
      */
     public StorageServer(File root)
@@ -135,6 +137,7 @@ public class StorageServer implements Storage, Command
     public synchronized boolean copy(Path file, Storage server)
         throws RMIException, FileNotFoundException, IOException
     {
+		// Handle files larger than heap memory
         throw new UnsupportedOperationException("not implemented");
     }
 }

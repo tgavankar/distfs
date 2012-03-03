@@ -103,8 +103,8 @@ public interface Service
                              error. This includes server shutdown while a client
                              is waiting to obtain the lock.
      */
-    public void lock(Path path, boolean exclusive)
-        throws RMIException, FileNotFoundException;
+    /*public void lock(Path path, boolean exclusive)
+        throws RMIException, FileNotFoundException;*/
 
     /** Unlocks a file or directory.
 
@@ -121,7 +121,7 @@ public interface Service
         @throws RMIException If the call cannot be completed due to a network
                              error.
      */
-    public void unlock(Path path, boolean exclusive) throws RMIException;
+    //public void unlock(Path path, boolean exclusive) throws RMIException;
 
     /** Determines whether a path refers to a directory.
 
