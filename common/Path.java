@@ -43,7 +43,7 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     */
     public Path(Path path, String component)
     {
-        if(component == null || isComponentLegal(component) || component.length() == 0)
+        if(component == null || !isComponentLegal(component) || component.length() == 0)
         	throw new IllegalArgumentException("Component is invalid.");
         Iterator<String> pathIt = path.iterator();
         myPath = new ArrayList<String>();
