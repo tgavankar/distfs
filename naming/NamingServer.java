@@ -151,7 +151,7 @@ public class NamingServer implements Service, Registration
     }
 
     // The following public methods are documented in Service.java.
-    /*@Override
+    @Override
     public void lock(Path path, boolean exclusive) throws FileNotFoundException
     {
         throw new UnsupportedOperationException("not implemented");
@@ -161,7 +161,7 @@ public class NamingServer implements Service, Registration
     public void unlock(Path path, boolean exclusive)
     {
         throw new UnsupportedOperationException("not implemented");
-    }*/
+    }
 
     @Override
     public boolean isDirectory(Path path) throws FileNotFoundException

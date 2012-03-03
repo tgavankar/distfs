@@ -43,7 +43,7 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     */
     public Path(Path path, String component)
     {
-        if(component == null || isComponentLegal(component) || component.length() == 0)
+        if(component == null || !isComponentLegal(component) || component.length() == 0)
         	throw new IllegalArgumentException("Component is invalid.");
         Iterator<String> pathIt = path.iterator();
         myPath = new ArrayList<String>();
@@ -70,7 +70,7 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     {
         if(path == null)
         	throw new IllegalArgumentException("The path given was null.");
-        if(path.charAt(0) == '/')
+        if(path.length() == 0 || path.charAt(0) != '/')
         	throw new IllegalArgumentException("The path did not start with /.");
         myPath = new ArrayList<String>();
         for(String s : path.split("/"))
@@ -137,6 +137,8 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
      */
     public static Path[] list(File directory) throws FileNotFoundException
     {
+    	// BROKEN: we need to remove the path given by directory.getPath(), but only for the root (so recursive calls shouldn't remove their paths)
+    	// helper function which takes the original path to strip out would be the way to go.
     	if(directory == null)
     		throw new FileNotFoundException("The directory was null.");
     	
@@ -144,14 +146,17 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     		throw new FileNotFoundException("The directory does not exist.");
     	
     	if(!directory.isDirectory())
-    		throw new IllegalArgumentException("Directory given is not actually a directory/.");
+    		throw new IllegalArgumentException("Directory given is not actually a directory.");
+    	
+    	
     	
     	ArrayList<Path> paths = new ArrayList<Path>();
+    	   	
     	for(File f : directory.listFiles())
     	{
     		if(f.isFile())
     		{
-    			paths.add(new Path(f.getPath()));
+    			paths.add(new Path(f.getPath().substring(directory.getPath().length())));
     		}
     		else if(f.isDirectory())
     		{
@@ -161,9 +166,14 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     			}
     		}
     	}
-    	return paths.toArray(new Path[1]);
+    	
+    	for(int i=0; i<paths.size(); i++) {
+    		System.out.println(paths.get(i));
+    	}
+    	
+    	return paths.toArray(new Path[paths.size()]);
     }
-
+    
     /** Determines whether the path represents the root directory.
 
         @return <code>true</code> if the path does represent the root directory,
@@ -183,10 +193,11 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     {
     	if(this.isRoot())
     		throw new IllegalArgumentException("Current path is the root. (Thrown from parent())");
-        String ppath = "";
+        
+    	String ppath = "";
         for(int i = 0; i < myPath.size()-1; i++)
         {
-        	ppath.concat("/".concat(myPath.get(i)));
+        	ppath += "/" + myPath.get(i);
         }
         return new Path(ppath);
     }
@@ -216,14 +227,12 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
      */
     public boolean isSubpath(Path other)
     {
-        String thisPath = this.toString();
+        //make this better because currently /fold is a subpath of /folder/file.txt
+    	
+    	String thisPath = this.toString();
         String oPath = other.toString();
-        for(int i = 0; i < thisPath.length(); i++)
-        {
-        	if(oPath.equals(thisPath.substring(0, i)))
-        		return true;
-        }
-        return false;
+        
+        return thisPath.startsWith(oPath);
     }
 
     /** Converts the path to <code>File</code> object.
@@ -316,10 +325,13 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     @Override
     public String toString()
     {
-        String path = "";
+        if(myPath.size() == 0)
+        	return "/";
+        
+    	String path = "";
         for(int i = 0; i < myPath.size(); i++)
         {
-        	path.concat("/".concat(myPath.get(i)));
+        	path += "/" + myPath.get(i);
         }
         return path;
     }
