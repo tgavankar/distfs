@@ -336,8 +336,9 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
      */
      private boolean isComponentLegal(String component)
      {
-    	 if(component.equals("/") || component.equals(":")) 
-     		 return false; 	 
+    	 for(char c : component.toCharArray())
+    		 if(c == '/' || c == ':')
+    			 return false;
     	 return true;
      }
     
