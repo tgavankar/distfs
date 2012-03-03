@@ -1,0 +1,235 @@
+OVERVIEW
+
+This directory contains a FUSE (Filesystem in Userspace) driver for the
+distributed filesystem. The driver allows the filesystem to be mounted directly
+in Linux and MacOS X. It can then be browsed using the operating system's normal
+tools, including command-line tools like ls and cd, and graphical tools such as
+nautilus and Finder.
+
+The driver, as distributed, is not customized for your implementation of the
+filesystem. You may need to make minor alterations to the Makefile in order for
+the driver to compile and run correctly. Details are given in the BUILDING
+section of this file.
+
+DESIGN
+
+The filesystem itself is written entirely in Java. This includes the client
+stubs and libraries. FUSE, however, expects the driver to provide a C (or C++)
+interface. The driver therefore consists of two components. A Java component
+directly performs the filesystem calls, and a C++ component implements the FUSE
+interface and controls the Java component.
+
+The driver makes heavy use of JNI. All of the JNI code is located in java.cpp.
+The rest of the driver's C++ logic is in fuse-operations.cpp. The Java code is
+all in fuse/Fuse.java.
+
+The binary file containing the driver includes all of the required Java classes,
+together with the compiled native code. It is not necessary to distribute any
+accompanying .class or .jar files. At driver startup, the native code creates a
+Java virtual machine and commands it to load the Java classes from memory.
+
+NO LOCKING
+
+This version of the driver does not use the locks that are available in project
+2. This means, among other things, that a file which is opened by one client may
+be overwritten or deleted by another client. The other client may even delete
+the entire directory tree. Use the drivers at your own risk. Using the driver
+with project 2 and multiple storage servers is outright dangerous. One client
+may be performing a read on a file. In the meantime, accesses by other clients
+may cause the file to first be replicated, and then the original copy, which is
+being used by the first client, to be deleted. The visible effect of this is not
+different from what would happen in project 1 if a file was deleted while
+another client had it open - but the point is that in project 2, a file can
+effectively be deleted even when no explicit delete command is issued. All these
+effects can result in data corruption and spurious failures of read and write
+calls on the client.
+
+Keeping this caveat in mind, the driver can be used equally well with both
+projects - but may require recompilation for each.
+
+USAGE
+
+To mount the filesystem, choose or create a directory to be the mount point. For
+example, you might create the directory ~/dfs. Next, get the hostname or IP
+address of the naming server to which the driver should connect - for example,
+127.0.0.1 if the naming server is running on the local machine. Then, issue the
+following command from the directory where the binary "p1-fuse" is located:
+    ./p1-fuse --server=127.0.0.1 ~/dfs
+
+The mount point (in this case ~/dfs) should now appear to be the root directory
+of the filesystem hosted on the naming server at 127.0.0.1, which should now be
+integrated into your operating system's virtual filesystem. Note that the mount
+will succeed whether or not there is a naming server running at the given host.
+The driver does not make any attempt to contact the naming server upon mount
+(although your operating system may make several requests after the filesystem
+is mounted).
+
+The FUSE library supports several command-line arguments. You can see these by
+running
+    ./p1-fuse --help
+or by visiting the project page for FUSE (Linux) or OSXFUSE (Mac) - see the
+LINKS section. This particular driver supports the following additional options:
+    --server=HOST           connect to the naming server at hostname HOST
+    --error-log=FILE        write internal error messages and Java exceptions to
+                            FILE
+    --file-mode=MODE        present all files as having permissions MODE
+    --directory-mode=MODE   present all directories as having permissions MODE
+
+The --error-log option is useful for debugging, especially while adapting the
+driver to your implementation of the filesystem. It is very important that the
+error log not be a path relative to your current user's home directory (~). This
+is because the driver forks a second process, and that process runs as the
+filesystem daemon, potentially as a different user. The driver may therefore
+have a different home directory by the time it is processing filesystem
+requests, or it may have no home directory at all. It is highly recommended that
+you specify the log file with an absolute path. The driver is generally good
+about using the error log. If the driver crashes or seems to be doing nothing,
+you should restart it with the --error-log option and see what is happening. If
+the error log itself is not being created, or nothing is being printed to it,
+the most likely reason is that the error log is not creatable or writable.
+Check the path you have given and the permissions.
+
+--file-mode and --directory-mode allow some control over the permissions given
+to files and directories, respectively. The filesystem itself does not store any
+permissions bits or perform any sort of access control. These options will cause
+some access control to be performed on the client side by the driver. This
+access control is greatly simplified. All files and all directories have the
+same permission, and whenever any kind of access is performed by anyone, only
+the user (and not the group or other) permission bits are used to decide whether
+access should be granted.
+
+Default values for the options are as follows:
+    --server=127.0.0.1 --file-mode=644 --directory-mode=755
+and no error log.
+
+To unmount the filesystem when finished, run
+    umount ~/dfs
+where ~/dfs is replaced by the actual mount point you were using. On Linux
+systems, you may need to prefix the whole command with "sudo".
+
+PREREQUISITES
+
+To use the driver, you must have Java installed on your machine. Linux clients
+need to have libfuse installed. Since you will likely be building the driver as
+well as using it, it is best to install the development package. On an Ubuntu
+distribution, this can be done by running
+    sudo apt-get install libfuse-dev
+Mac clients should install OSXFUSE. Just download the .pkg file from the project
+page, and install as normal. It is probably possible to compile and run the
+driver over Fuse4X instead of OSXFUSE, but this has not been tested. Do not use
+MacFUSE, as it is no longer maintained and out of date.
+
+Attempting to run p1-fuse may cause a message to be printed, to the effect that
+libjvm.so cannot be found. This happens with some Java installations on Ubuntu.
+This problem can be fixed by creating a symbolic link to libjvm.so in a system
+library directory, such as /usr/lib. For example,
+    ln -s /usr/lib/jvm/default-java/jre/lib/i386/client/libjvm.so \
+        /usr/lib/libjvm.so
+Replace the first path with the true location of your copy of libjvm.so.
+
+It is a good idea to have a copy of pkg-config for compiling the driver. The Mac
+installation sometimes does not properly set the PKG_CONFIG_PATH environment
+variable. If this is the case, you must set this manually to your system's
+pkgconfig directory. For example, you might need to issue the command
+    export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+You may wish to do put this command into your bash profile, so that it is run
+each time the shell starts.
+
+BUILDING
+
+To build the driver binary, simply type "make". You will need to customize the
+Makefile somewhat, however. The two main tasks are to adjust library paths to
+match the actual library locations on your system, and to make sure that all the
+necessary Java classes from the main code of your filesystem are included in the
+driver binary. These tasks are described below.
+
+To edit the library paths, edit the definitions of the CPPFLAGS and LDFLAGS
+variables in the Makefile. It is probably easiest to uncomment the proper
+default definitions for your system (Linux or Mac) and just compile. If
+compilation succeeds, nothing needs to be done. If, however, compilation fails
+with a missing header file, or libraries that cannot be found, then you need to
+edit the appropriate paths. The default definitions rely on the presence of
+pkg-config. If you do not have and do not wish to install this tool, you will
+need to manually enter the include path for FUSE in CPPFLAGS, and manually enter
+the library path for FUSE in LDFLAGS. When you try to compile, FUSE will ask you
+to add another flag to CPPFLAGS - do this, and now you should be able to
+compile.
+
+Adding the proper Java classes is done by editing the FSMODULES variable. First,
+make sure that FSDIR is the path to your main distributed filesystem development
+directory. If you put the driver in a fuse/ subdirectory of that directory, then
+the default value of ".." is correct. Next, list in FSMODULES all the Java
+classes that a client of your filesystem must have. This necessarily includes at
+least the following classes:
+    common/Path             clients must be able to use path objects
+    rmi/Stub                clients need to create the naming server stub
+    rmi/RMIException        clients need to be able to handle RMI exceptions
+    storage/Storage         clients need to understand the storage interface
+    naming/Service          clients need to understand the service interface
+    naming/NamingStubs      clients may use the convenience methods to get stubs
+
+These classes are all listed in FSMODULES by default. The tricky part is that
+your implementation of these classes might rely on other classes - either
+package-private classes, or inner classes. You must list these classes in
+FSMODULES as well, or the client will not be able to use your implementation.
+
+For example, if your implementation of rmi.Stub also relies on
+rmi.Stub.StubHandler, an inner class, and rmi.Util, a package private class,
+then you should add the following to FSMODULES:
+    rmi/Stub$$StubHandler rmi/Util
+Note the "$$". This actually expands to "$" in the Makefile. It is important
+that you write "$$", otherwise make will treat the following letter as the name
+of a variable.
+
+If you are not sure which classes you should add to FSMODULES, you can simply
+compile your driver, and then start it, supplying the option --error-log=FILE.
+Then, if the driver is not working, read the error log to see if there are any
+ClassNotFoundExceptions or similar errors. If so, you must list the missing
+classes in FSMODULES and recompile the driver.
+
+LIMITATIONS
+
+The filesystem does not support a rename/move function, so renaming and moving
+are not supported. This means that it can be difficult to create folders with
+some graphical file managers that create a folder with a default name (such as
+"New Folder") and then give the user the option of renaming it. The mkdir
+command works fine, however. Some applications (such as text editors) rely on
+moving to save files: they first write a complete copy of the file to be saved
+to a temporary location, and then, if the write is succesful, move the copy to
+the final location. This is a very sensible approach, but it will not work on
+this filesystem. The lack rename/move is the source of the majority of practical
+annoyances.
+
+It is also not possible to truncate a file to any size except zero. Truncating
+to size zero is supported to allow files to be opened for writing with the
+truncate option.
+
+The filesystem and the FUSE client, when considered as a single system, are rife
+with race conditions because of the lack of locking. In addition, even
+apparently atomic operations like truncation can fail due to race conditions,
+because truncation is in fact not atomic - the FUSE client first checks if the
+given path refers to a file, then deletes it and re-creates it if so.
+Interference by other clients is possible at all stages of this process.
+
+Tools such as cp may generate error messages on your system when they attempt to
+copy file extended attributes or set file permissions, as neither extended
+attributes nor permissions are supported by the filesystem. The operation
+generally succeeds anyway, however. You may want to consider supplying
+additional options to the tool so suppress the behavior or the error messages.
+
+Because file times are not supported, tools such as touch will fail to update
+them. However, touch will still create a file if it does not exist.
+
+DOCUMENTATION
+
+The source code documentation can be generated by typing "make docs". Overall
+documentation for the whole project, and for the C++ portion, can then be found
+at doxygen/html/index.html. Documentation for the lone Java class, fuse.Fuse,
+can be displayed by viewing javadoc/index.html.
+
+LINKS
+
+FUSE project page           http://fuse.sourceforge.net/
+OSXFUSE project page        http://osxfuse.github.com/
+JNI reference
+  http://download.oracle.com/javase/6/docs/technotes/guides/jni/spec/jniTOC.html

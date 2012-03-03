@@ -1,0 +1,157 @@
+/** @mainpage Driver Overview
+
+    This documentation, including this overview, contains technical information
+    on the implementation details of the driver, design decisions, and so on.
+    For detailed compilation and usage instructions, see the accompanying
+    <code>README</code> file distributed with the driver source. This Doxygen
+    documentation is concerned with the C++ code and general principles. The
+    Java code is documented in Javadoc, which can be found by following
+    <a href="../../javadoc/fuse/package-summary.html">this link</a>.
+
+    @section Design Design
+
+    The driver is implemented using the <em>Filesystem in Userspace</em> (FUSE)
+    library. This library permits (not surprisingly) filesystem drivers to be
+    implemented as user-space programs. Ordinarily, without FUSE (or a similar
+    library), a filesystem driver would have to be a kernel module. Development
+    in user space is substantially simplified, compared to developing a kernel
+    module. As an additional benefit, several ports of FUSE (which is originally
+    a Linux project) are available for MacOS X. This driver relies on the
+    OSXFUSE port for MacOS X. The regular Linux FUSE library and OSXFUSE are
+    compatible to the extent that no changes are needed to the source code to
+    compile on both platforms. FUSE itself is implemented as a user-space
+    library component, which is used to write the driver, and kernel module
+    which communicates with the user-space library. For more details, see the
+    <a href="http://fuse.sourceforge.net/">FUSE project page</a>,
+    <a href="http://osxfuse.github.com/">OSXFUSE project page</a>, and the
+    <a href="http://en.wikipedia.org/wiki/Filesystem_in_Userspace">Wikipedia
+    page on FUSE</a>.
+
+    The driver is split into three major components. A Java component
+    communicates directly with the filesystem servers. This component must be
+    written in Java because the filesystem interface is implemented using the
+    custom Java RMI library created in project 1. A C++ component presents the
+    interface expected by the FUSE library. This component must be written in
+    C++ (or C) because C is the FUSE library's native language. Between the two
+    components is the <em>Java Native Interface</em> (JNI) Invocation API, which
+    allows the C++ code to call Java methods. The C++ code does not use JNI
+    directly, instead there is a wrapper module which simplifies most JNI tasks.
+    This is the third major component in the driver. The three components
+    correspond to the three major source files in the driver source tree: the
+    Java component is implemented in <code>fuse.java</code>, the C++ component
+    in <code>fuse-operations.cpp</code>, and the JNI wrapper in
+    <code>java.cpp</code>.
+
+    @subsection AccessChecks Access Checks
+
+    The distributed filesystem does not support permissions. However, the driver
+    allows the filesystem to be mounted with permissions that are checked on the
+    client side (details can be found in the <code>README</code>). The access
+    checks are performed in C++ code instead of Java code, even though in
+    principle as much as possible should be done in Java. This is because of the
+    need to somehow translate between constants such as <code>S_IWUSR</code> and
+    <code>X_OK</code>, and their Java counterparts. Alternatively, the constants
+    could be made visible to the Java code, but they could not be hardcoded, as
+    they might be different on different systems. Either way, the result is some
+    amount of boilerplate code. Since access checks are very easy to do, they
+    are simply done in C++ instead.
+
+    @subsection InitializationFailure Initialization Failure
+
+    The FUSE documentation is not clear on what should be done in case of a
+    failure in the <code>init</code> function. The FUSE source code is also not
+    particularly enlightening. For this reason, initialization failures are
+    unfortunately not handled well at all by the driver. The driver simply
+    continues running as if initialization succeeded, with potentially fatal
+    results.
+
+    @subsection LanguageChoice Language Choice
+
+    The "C++" used in this project is in fact mostly C. The major reason for
+    using C++ instead of plain C is templates. JNI provides certain families of
+    functions, such as <code>CallStaticBooleanMethod</code>,
+    <code>CallStaticObjectMethod</code>, <code>CallStaticLongMethod</code>, and
+    so on, where the functions differ only by their return type. The JNI wrapper
+    subsumes all of these under a single template declaration. An improved JNI
+    wrapper might also use C++ exception handling, and more thorough use of
+    generic programming, to further simplify the interface that it presents.
+    However, this would take more research and a greater amount of time to
+    implement, and was decided to be impractical for a simple driver.
+
+    @section StringEncodings String Encodings
+
+    The FUSE driver must deal with several different encodings. The FUSE library
+    (apparently) guarantees that path strings provided to the FUSE driver will
+    not contain any embedded nulls, and that any forward slashes are path
+    separators and not part of component names. Aside from this, nothing further
+    can be assumed about the encoding of path strings.
+
+    The Java code nonetheless assumes that path strings are encoded using UTF-8.
+    Most modern operating systems encode system strings using either UTF-8 or
+    UTF-16, or using some closely-related encoding. Using UTF-16 would result in
+    embedded nulls in the string, violating one of the assumptions that can be
+    made about strings handled by the FUSE library. It is therefore hoped that
+    assuming strings are provided in UTF-8 is safe enough for most purposes.
+
+    The FUSE constraints on the encoding of paths are for the most part directly
+    compatible with constraints imposed by the distributed filesystem itself.
+    There are a two minor incompatibilites, however. First, filesystem path
+    components are not allowed to contain the <code>:</code> or <code>;</code>
+    characters, whereas there is no guarantee that a path given to the FUSE
+    driver by the FUSE library will not have such characters. Attempting to use
+    the FUSE driver with such a path will typically result in an error code of
+    <code>EINVAL</code>. Second, there is no guarantee that a filesystem path
+    does not contain any embedded null characters. When decoded, a path with
+    components containing null characters would appear to be shortened to the
+    native code. The Java portion of the FUSE driver takes care never to
+    successfully decode such path components - thus, filesystem components with
+    embedded nulls never become visible through the FUSE driver.
+
+    @section ClassDistribution Distribution of Java Classes
+
+    The C++ portion of the driver is obviously compiled to a native binary
+    executable file. The driver also, however, has a Java portion. In addition
+    to the <code>fuse.Fuse</code> class, it must also include enough classes
+    from the main filesystem source tree to create a simple client. This
+    includes the naming server and storage server client interfaces,
+    <code>naming.Service</code> and <code>storage.Storage</code>, the path
+    library <code>common.Path</code>, RMI stubs <code>rmi.Stub</code>, and
+    others. All of these classes must be distributed with the driver, as the
+    driver needs them to work. An awkward solution is to distribute an
+    accompanying JAR file together with the native binary. This, however, would
+    require the native binary to know the path to the JAR file when starting the
+    Java virtual machine, which is not a very simple thing to arrange when the
+    driver ends up running in a new process, with a working directory that might
+    be different from the one with which it was started, when the driver might
+    not have been started from the directory in which it is located, and when it
+    might be installed in one of several different locations. This is even more
+    problematic when one considers that the driver should work on both Linux and
+    MacOS X.
+
+    To avoid this problem, all the classes necessary for the driver to work are
+    inlined directly into the native binary at compile time, and stored by the
+    linker in a data section (usually a read-only data section like
+    <code>.rodata</code>). The Java virtual machine is then commanded to load
+    these classes from memory after the native binary itself has been loaded and
+    has started running. This is made possible by the build tool
+    <code>build.MakeClassesImage</code>, which translates each of the necessary
+    class files into C source code for a byte array, and builds a small table of
+    the classes distributed with the native binary. The native binary is thus
+    entirely self-contained: it contains all the compiled C++ code and all the
+    compiled Java classes. The translated classes can be found in the generated
+    file <code>native/bin/java-classes.cpp</code>.
+
+    @section Screenshots Screenshots
+
+    Full-size images are located in the driver source code root directory.
+
+    <div style=height:2em></div>
+    <img src="../../dfs-fuse-macosx.png" width=60%></img>
+    <div style=height:1em></div>
+    <center>Running on MacOS X</center>
+    <div style=height:5em></div>
+    <img src="../../dfs-fuse-ubuntu.png" width=60%></img>
+    <div style=height:1em></div>
+    <center>Running on Ubuntu</center>
+    <div style=height:5em></div>
+ */
