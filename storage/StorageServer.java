@@ -18,9 +18,45 @@ public class StorageServer implements Storage, Command
 {
 	Skeleton<Storage> clientSkeleton;
 	Skeleton<Command> commandSkeleton;
-	
+	boolean clientStopped = false;
+	boolean commandStopped = false;
 	File root;
-	
+	private class clSkeleton<Storage> extends Skeleton<Storage>
+	{
+		
+
+		public clSkeleton(Class<Storage> arg0, Storage arg1) {
+			super(arg0, arg1);
+		}
+		
+		@Override
+		protected void stopped(Throwable e)
+		{
+			synchronized(clSkeleton.this)
+			{
+				clientStopped = true;
+				clSkeleton.this.notifyAll();
+			}
+		}
+	}
+	private class cmSkeleton<Storage> extends Skeleton<Storage>
+	{
+		
+
+		public cmSkeleton(Class<Storage> arg0, Storage arg1) {
+			super(arg0, arg1);
+		}
+		
+		@Override
+		protected void stopped(Throwable e)
+		{
+			synchronized(cmSkeleton.this)
+			{
+				commandStopped = true;
+				cmSkeleton.this.notifyAll();
+			}
+		}
+	}
     /** Creates a storage server, given a directory on the local filesystem, and
         ports to use for the client and command interfaces.
 
@@ -140,9 +176,12 @@ public class StorageServer implements Storage, Command
     public void stop()
     {
         // TODO: skeletons should be subclassed and we should check stopped() before calling our own stopped()
-    	clientSkeleton.stop();
-        commandSkeleton.stop();
-        stopped(null);
+    	clSkeleton<Storage> clientTemp = (clSkeleton<Storage>) clientSkeleton;
+    	cmSkeleton<Command> commandTemp = (cmSkeleton<Command>) commandSkeleton;
+    	clientTemp.stop();
+    	commandTemp.stop();
+    	if(clientStopped && commandStopped)
+    		stopped(null);
     }
 
     /** Called when the storage server has shut down.
@@ -255,4 +294,6 @@ public class StorageServer implements Storage, Command
 		// Handle files larger than heap memory
         throw new UnsupportedOperationException("not implemented");
     }
+    
+    
 }
