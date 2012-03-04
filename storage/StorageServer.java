@@ -197,8 +197,14 @@ public class StorageServer implements Storage, Command
         if(!temp.canWrite())
         	throw new IOException("The file is not writable.");
         
-        FileWriter fwrite = new FileWriter(temp);
-        fwrite.write(data);
+        FileOutputStream fout = new FileOutputStream(temp);
+        fout.flush();
+        try{
+        	fout.write(data);
+        }catch(Exception e)
+        {
+        	throw new IOException("Threw" + e + " when writing to file.");
+        }
     }
 
     // The following methods are documented in Command.java.
