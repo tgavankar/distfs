@@ -189,9 +189,11 @@ public class StorageServer implements Storage, Command
     public synchronized void write(Path file, long offset, byte[] data)
         throws FileNotFoundException, IOException
     {
-    	if(offset < 0)
-    		throw new IndexOutOfBoundsException("The offset was negative.");
-        File temp = file.toFile(null);
+    	if(offset < 0 || offset > Integer.MAX_VALUE)
+    		throw new IndexOutOfBoundsException();
+        
+    	File temp = new File(root, file.toString());
+        
         if(!temp.exists() || temp.isDirectory())
         	throw new FileNotFoundException("The given file does not exist or is a directory.");
         if(!temp.canWrite())
@@ -200,10 +202,10 @@ public class StorageServer implements Storage, Command
         FileOutputStream fout = new FileOutputStream(temp);
         fout.flush();
         try{
-        	fout.write(data);
+        	fout.write(data, (int) offset, data.length);
         }catch(Exception e)
         {
-        	throw new IOException("Threw" + e + " when writing to file.");
+        	throw new IOException("Threw " + e + " when writing to file.");
         }
     }
 
