@@ -113,14 +113,20 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
         	
         	public String next()
         	{
-        		String temp = myPath.get(i);
+        		String temp = "";
+        		if(i < myPath.size())
+        			temp = myPath.get(i);
+				else
+				{
+					throw new NoSuchElementException("Trying to advance past end of iterator.");
+				}
         		i++;
         		return temp;
         	}
         	
         	public void remove()
         	{
-        		
+        		throw new UnsupportedOperationException("Remove is not supported.");
         	}
         };
     }
@@ -148,29 +154,7 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     	if(!directory.isDirectory())
     		throw new IllegalArgumentException("Directory given is not actually a directory.");
     	
-    	
-    	
-    	ArrayList<Path> paths = new ArrayList<Path>();
-    	   	
-    	for(File f : directory.listFiles())
-    	{
-    		if(f.isFile())
-    		{
-    			paths.add(new Path(f.getPath().substring(directory.getPath().length())));
-    		}
-    		else if(f.isDirectory())
-    		{
-    			for(Path p: list(f))
-    			{
-    				paths.add(p);
-    			}
-    		}
-    	}
-    	
-    	for(int i=0; i<paths.size(); i++) {
-    		System.out.println(paths.get(i));
-    	}
-    	
+    	ArrayList<Path> paths = listHelper(directory, directory.getPath().length());
     	return paths.toArray(new Path[paths.size()]);
     }
     
@@ -353,5 +337,30 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     			 return false;
     	 return true;
      }
-    
+     
+     /*
+      *  Helper function for the list function. Gets the original
+      *  directory's parent, strips that from the rest of the files.
+      */
+     private static ArrayList<Path> listHelper(File directory, int parentLength)
+     {
+     	ArrayList<Path> paths = new ArrayList<Path>();
+
+     	for(File f : directory.listFiles())
+     	{
+     		if(f.isFile())
+     		{
+     			paths.add(new Path(f.getPath().substring(parentLength)));
+     		}
+     		else if(f.isDirectory())
+     		{
+     			for(Path p: listHelper(f, parentLength))
+     				paths.add(p);
+     		}
+     	}
+     		
+     	Collections.reverse(paths);
+     	//System.out.println(paths);
+     	return paths;
+     }
 }
