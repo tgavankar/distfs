@@ -175,13 +175,15 @@ public class StorageServer implements Storage, Command
      */
     public void stop()
     {
-        // TODO: skeletons should be subclassed and we should check stopped() before calling our own stopped()
-    	clSkeleton<Storage> clientTemp = (clSkeleton<Storage>) clientSkeleton;
+        // TODO: The subclasses are made, but we need to change clientSkeleton and commandSkeleton 
+    	// to be those subclasses instead of rmi.Skeleton
+    	
+    	/*clSkeleton<Storage> clientTemp = (clSkeleton<Storage>) clientSkeleton;
     	cmSkeleton<Command> commandTemp = (cmSkeleton<Command>) commandSkeleton;
     	clientTemp.stop();
     	commandTemp.stop();
     	if(clientStopped && commandStopped)
-    		stopped(null);
+    		stopped(null);*/
     }
 
     /** Called when the storage server has shut down.
