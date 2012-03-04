@@ -162,7 +162,22 @@ public class StorageServer implements Storage, Command
     public synchronized byte[] read(Path file, long offset, int length)
         throws FileNotFoundException, IOException
     {
-        throw new UnsupportedOperationException("not implemented");
+        File f = new File(root, file.toString());
+        
+        if(!f.canRead() || f.isDirectory()) {
+        	throw new FileNotFoundException();
+        }
+        
+        if(offset < 0 || offset > Integer.MAX_VALUE){ 
+        	throw new IOException("Offset too large");
+        }
+        
+        InputStream reader = new FileInputStream(f);
+        
+        byte[] bbuf = new byte[length]; 
+        reader.read(bbuf, (int)offset, length);
+        
+        return bbuf;
     }
 
     @Override
@@ -176,13 +191,37 @@ public class StorageServer implements Storage, Command
     @Override
     public synchronized boolean create(Path file)
     {
-        throw new UnsupportedOperationException("not implemented");
+        if(file.isRoot()) {
+        	return false;
+        }
+        
+        File parent = new File(root, file.parent().toString());
+        parent.mkdirs();
+        
+        File f = new File(root, file.toString());
+        try {
+			return f.createNewFile();
+		} catch (IOException e) {
+			return false;
+		}
     }
 
     @Override
     public synchronized boolean delete(Path path)
     {
-        throw new UnsupportedOperationException("not implemented");
+        if(path.isRoot()) {
+        	return false;
+        }
+        
+        return deleteHelper(new File(root, path.toString()));
+    }
+    
+    private boolean deleteHelper(File f) {
+		if (f.isDirectory()) {
+			for (File c : f.listFiles())
+				deleteHelper(c);
+		}
+		return f.delete();
     }
 
     @Override
