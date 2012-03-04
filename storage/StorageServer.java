@@ -24,11 +24,15 @@ public class StorageServer implements Storage, Command
 	private class clSkeleton<Storage> extends Skeleton<Storage>
 	{
 		
-
 		public clSkeleton(Class<Storage> arg0, Storage arg1) {
 			super(arg0, arg1);
 		}
 		
+		public clSkeleton(Class<Storage> arg0, Storage arg1,
+				InetSocketAddress arg2) {
+			super(arg0, arg1, arg2);
+		}
+
 		@Override
 		protected void stopped(Throwable e)
 		{
@@ -47,6 +51,11 @@ public class StorageServer implements Storage, Command
 			super(arg0, arg1);
 		}
 		
+		public cmSkeleton(Class<Command> arg0, Command arg1,
+				InetSocketAddress arg2) {
+			super(arg0, arg1, arg2);
+		}
+
 		@Override
 		protected void stopped(Throwable e)
 		{
