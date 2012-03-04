@@ -16,8 +16,8 @@ import naming.*;
  */
 public class StorageServer implements Storage, Command
 {
-	Skeleton<Storage> clientSkeleton;
-	Skeleton<Command> commandSkeleton;
+	clSkeleton<Storage> clientSkeleton;
+	cmSkeleton<Command> commandSkeleton;
 	boolean clientStopped = false;
 	boolean commandStopped = false;
 	File root;
@@ -89,17 +89,17 @@ public class StorageServer implements Storage, Command
         }
         
         if(client_port == 0) {
-        	clientSkeleton = new Skeleton<Storage>(Storage.class, this);
+        	clientSkeleton = new clSkeleton<Storage>(Storage.class, this);
         }
         else {
-        	clientSkeleton = new Skeleton<Storage>(Storage.class, this, new InetSocketAddress(client_port));
+        	clientSkeleton = new clSkeleton<Storage>(Storage.class, this, new InetSocketAddress(client_port));
         }
         
         if(command_port == 0) {
-        	commandSkeleton = new Skeleton<Command>(Command.class, this);
+        	commandSkeleton = new cmSkeleton<Command>(Command.class, this);
         }
         else {
-        	commandSkeleton = new Skeleton<Command>(Command.class, this, new InetSocketAddress(command_port));
+        	commandSkeleton = new cmSkeleton<Command>(Command.class, this, new InetSocketAddress(command_port));
         }
         
         this.root = root;
@@ -184,15 +184,14 @@ public class StorageServer implements Storage, Command
      */
     public void stop()
     {
-        // TODO: Subclasses are made, now to change the clientSkeleton and command Skeleton 
-    	// to match those subclasses? If so use the commented code below:
+        // TODO: Is this correct?
     	
-    	/*
+    	
     	clientSkeleton.stop();
         commandSkeleton.stop();
         if(clientStopped && commandStopped)
             stopped(null);
-        */
+        
     	
     }
 
