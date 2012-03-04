@@ -139,7 +139,9 @@ public class StorageServer implements Storage, Command
      */
     public void stop()
     {
-        throw new UnsupportedOperationException("not implemented");
+        clientSkeleton.stop();
+        commandSkeleton.stop();
+        stopped(null);
     }
 
     /** Called when the storage server has shut down.
@@ -155,7 +157,10 @@ public class StorageServer implements Storage, Command
     @Override
     public synchronized long size(Path file) throws FileNotFoundException
     {
-        throw new UnsupportedOperationException("not implemented");
+        File temp = file.toFile(null);
+        if(!temp.exists() || temp.isDirectory())
+        	throw new FileNotFoundException("The given file does not exist or is a directory.");
+        return temp.getTotalSpace();
     }
 
     @Override
@@ -169,7 +174,16 @@ public class StorageServer implements Storage, Command
     public synchronized void write(Path file, long offset, byte[] data)
         throws FileNotFoundException, IOException
     {
-        throw new UnsupportedOperationException("not implemented");
+    	if(offset < 0)
+    		throw new IndexOutOfBoundsException("The offset was negative.");
+        File temp = file.toFile(null);
+        if(!temp.exists() || temp.isDirectory())
+        	throw new FileNotFoundException("The given file does not exist or is a directory.");
+        if(!temp.canWrite())
+        	throw new IOException("The file is not writable.");
+        
+        FileWriter fwrite = new FileWriter(temp);
+        fwrite.write(data);
     }
 
     // The following methods are documented in Command.java.
