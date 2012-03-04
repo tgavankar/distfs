@@ -36,7 +36,7 @@ public class NamingServer implements Service, Registration
     FsNode fsRoot;
     Skeleton<Service> clientSkeleton;
     Skeleton<Registration> regisSkeleton;
-	
+	HashMap<Command, Storage> storageList;
     
     private class FsNode {
     	HashMap<String, FsNode> children;
@@ -100,9 +100,10 @@ public class NamingServer implements Service, Registration
     public NamingServer()
     {
         fsRoot = new FsNode("");
-    	clientSkeleton = new Skeleton<Service>(Service.class, this);
-    	regisSkeleton = new Skeleton<Registration>(Registration.class, this);
-
+    	clientSkeleton = new Skeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT));
+    	regisSkeleton = new Skeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT));
+    	storageList = new HashMap<Command, Storage>();
+    
     }
 
     /** Starts the naming server.
@@ -134,7 +135,9 @@ public class NamingServer implements Service, Registration
      */
     public void stop()
     {
-        throw new UnsupportedOperationException("not implemented");
+        clientSkeleton.stop();
+        regisSkeleton.stop();
+        stopped(null);
     }
 
     /** Indicates that the server has completely shut down.
@@ -191,21 +194,68 @@ public class NamingServer implements Service, Registration
         	current = current.getChild(p);
         }
         
-        return (String[]) current.getChildren().keySet().toArray();
+        Set<String> filenames = current.getChildren().keySet();
+        
+        return filenames.toArray(new String[filenames.size()]);
     }
 
     @Override
     public boolean createFile(Path file)
         throws RMIException, FileNotFoundException
     {
-        throw new UnsupportedOperationException("not implemented");
+    	if(file == null) {
+    		throw new NullPointerException();
+    	}
+    	
+    	if(file.isRoot()) {
+    		return false;
+    	}
+    	
+    	if(!isDirectory(file.parent())) {
+    		throw new FileNotFoundException();
+    	}
+    	
+    	FsNode parent = fsRoot;
+    	FsNode current;
+        for(String p : file) {
+        	current = parent.getChild(p);
+        	
+        	if(current == null) { 
+        		Command cs = getRandomServer();
+				cs.create(file);
+				parent.addChild(p, new FsNode(p, storageList.get(cs), cs));
+				return true;
+        	}
+        	if(current.isFile()) {
+        		return false;
+        	}
+        	if(current.getName().equals(file.last())) {
+        		return false;
+        	}
+        	
+        	parent = current;
+        }
+        return false;
     }
 
+    private Command getRandomServer() {
+    	Set<Command> storageSet = storageList.keySet();
+    	Command[] storageArray = storageSet.toArray(new Command[storageSet.size()]);
+    	int item = new Random().nextInt(storageArray.length);
+    	return storageArray[item];    	
+    }
+    
     @Override
     public boolean createDirectory(Path directory) throws FileNotFoundException
     {
+    	if(directory.isRoot()) {
+    		return false;
+    	}
+    	
     	// Should this be an RMI call to do it serverside too?
-    	isDirectory(directory.parent());  // We want the throwing of FileNotFoundException if it's not
+    	if(!isDirectory(directory.parent())) {  // We want the throwing of FileNotFoundException if it's not
+    		throw new FileNotFoundException();
+    	}
     	
     	FsNode parent = fsRoot;
     	FsNode current;
@@ -254,7 +304,15 @@ public class NamingServer implements Service, Registration
     public Path[] register(Storage client_stub, Command command_stub,
                            Path[] files)
     {
-		ArrayList<Path> dupeFiles = new ArrayList<Path>();
+		if(client_stub == null || command_stub == null || files == null) {
+			throw new NullPointerException();
+		}
+    	
+		if(storageList.containsKey(command_stub)) {
+			throw new IllegalStateException("Duplicate registration");
+		}
+		
+    	ArrayList<Path> dupeFiles = new ArrayList<Path>();
         
 		for(int i=0; i<files.length; i++) {
 			FsNode current = fsRoot;
@@ -264,7 +322,7 @@ public class NamingServer implements Service, Registration
 	        	if(current == null) {
 	        		break;
 	        	}
-	        	if(current.isFile()) {
+	        	if(p.equals(files[i].last())) {
 	        		isDupe = true;
 	        	}
 	        }
@@ -289,10 +347,12 @@ public class NamingServer implements Service, Registration
 	        		}
 	        		parent.addChild(p, newNode);
 	        	}
-	        	parent = current;
+        		parent = parent.getChild(p);
 	        }
         }
         
-    	return (Path[]) dupeFiles.toArray();
+		storageList.put(command_stub, client_stub);
+		
+    	return dupeFiles.toArray(new Path[dupeFiles.size()]);
     }
 }
