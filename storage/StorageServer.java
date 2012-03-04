@@ -139,7 +139,8 @@ public class StorageServer implements Storage, Command
      */
     public void stop()
     {
-        clientSkeleton.stop();
+        // TODO: skeletons should be subclassed and we should check stopped() before calling our own stopped()
+    	clientSkeleton.stop();
         commandSkeleton.stop();
         stopped(null);
     }
