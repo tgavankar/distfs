@@ -228,7 +228,7 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     public File toFile(File root)
     {
     	if(root != null)
-    		return new File(root.getPath().concat(this.toString()));
+    		return new File(root.getPath() + this.toString());
     	else
     		return new File(this.toString());
     }
