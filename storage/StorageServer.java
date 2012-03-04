@@ -39,11 +39,11 @@ public class StorageServer implements Storage, Command
 			}
 		}
 	}
-	private class cmSkeleton<Storage> extends Skeleton<Storage>
+	private class cmSkeleton<Command> extends Skeleton<Command>
 	{
 		
 
-		public cmSkeleton(Class<Storage> arg0, Storage arg1) {
+		public cmSkeleton(Class<Command> arg0, Command arg1) {
 			super(arg0, arg1);
 		}
 		
@@ -175,9 +175,8 @@ public class StorageServer implements Storage, Command
      */
     public void stop()
     {
-        // TODO: The subclasses are made, but we need to change clientSkeleton and commandSkeleton 
-    	// to be those subclasses instead of rmi.Skeleton
-    	
+        // TODO: Subclasses are made, now to change the clientSkeleton and command Skeleton 
+    	// to match those subclasses?
     	/*clSkeleton<Storage> clientTemp = (clSkeleton<Storage>) clientSkeleton;
     	cmSkeleton<Command> commandTemp = (cmSkeleton<Command>) commandSkeleton;
     	clientTemp.stop();
