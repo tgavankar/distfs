@@ -16,6 +16,11 @@ import naming.*;
  */
 public class StorageServer implements Storage, Command
 {
+	Skeleton<Storage> clientSkeleton;
+	Skeleton<Command> commandSkeleton;
+	
+	File root;
+	
     /** Creates a storage server, given a directory on the local filesystem, and
         ports to use for the client and command interfaces.
 
@@ -34,7 +39,25 @@ public class StorageServer implements Storage, Command
     */
     public StorageServer(File root, int client_port, int command_port)
     {
-        throw new UnsupportedOperationException("not implemented");
+        if(root == null) {
+        	throw new NullPointerException();
+        }
+        
+        if(client_port == 0) {
+        	clientSkeleton = new Skeleton<Storage>(Storage.class, this);
+        }
+        else {
+        	clientSkeleton = new Skeleton<Storage>(Storage.class, this, new InetSocketAddress(client_port));
+        }
+        
+        if(command_port == 0) {
+        	commandSkeleton = new Skeleton<Command>(Command.class, this);
+        }
+        else {
+        	commandSkeleton = new Skeleton<Command>(Command.class, this, new InetSocketAddress(command_port));
+        }
+        
+        this.root = root;
     }
 
     /** Creates a storage server, given a directory on the local filesystem.
@@ -51,7 +74,7 @@ public class StorageServer implements Storage, Command
      */
     public StorageServer(File root)
     {
-        throw new UnsupportedOperationException("not implemented");
+        this(root, 0, 0);
     }
 
     /** Starts the storage server and registers it with the given naming
@@ -77,9 +100,38 @@ public class StorageServer implements Storage, Command
     public synchronized void start(String hostname, Registration naming_server)
         throws RMIException, UnknownHostException, FileNotFoundException
     {
-        throw new UnsupportedOperationException("not implemented");
+        if(!root.exists() || !root.isDirectory()) {
+        	throw new FileNotFoundException();
+        }
+        
+        clientSkeleton.start();
+        commandSkeleton.start();
+        
+        Path[] dupeFiles = naming_server.register(Stub.create(Storage.class, clientSkeleton, hostname), Stub.create(Command.class, commandSkeleton, hostname), Path.list(root));
+        
+        for(int i=0; i<dupeFiles.length; i++) {
+        	delete(dupeFiles[i]);
+        }
+        
+        deleteEmptyDirs(root);
     }
 
+    private synchronized void deleteEmptyDirs(File r) {
+    	if(!r.isDirectory()) {
+    		return;
+    	}
+    	
+    	if(r.list().length > 0) {
+    		for(File f : r.listFiles()) {
+    			deleteEmptyDirs(f);
+    		}
+    	}
+    	
+    	if(r.list().length == 0) {
+    		r.delete();
+    	}
+    }
+    
     /** Stops the storage server.
 
         <p>
