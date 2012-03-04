@@ -157,30 +157,31 @@ public class StorageServer implements Storage, Command
     @Override
     public synchronized long size(Path file) throws FileNotFoundException
     {
-        File temp = file.toFile(null);
+    	File temp = file.toFile(root);
         if(!temp.exists() || temp.isDirectory())
         	throw new FileNotFoundException("The given file does not exist or is a directory.");
-        return temp.getTotalSpace();
+        return temp.length();
     }
 
     @Override
     public synchronized byte[] read(Path file, long offset, int length)
         throws FileNotFoundException, IOException
     {
-        File f = new File(root, file.toString());
+        File f = file.toFile(root);
+        
+    	if(offset < 0 || offset > Integer.MAX_VALUE || length < 0 || offset + length > f.length())
+    		throw new IndexOutOfBoundsException();
         
         if(!f.canRead() || f.isDirectory()) {
         	throw new FileNotFoundException();
         }
         
-        if(offset < 0 || offset > Integer.MAX_VALUE){ 
-        	throw new IOException("Offset too large");
-        }
+        RandomAccessFile reader = new RandomAccessFile(f, "r");
         
-        InputStream reader = new FileInputStream(f);
+        reader.seek(offset);
         
         byte[] bbuf = new byte[length]; 
-        reader.read(bbuf, (int)offset, length);
+        reader.readFully(bbuf);
         
         return bbuf;
     }
@@ -189,21 +190,21 @@ public class StorageServer implements Storage, Command
     public synchronized void write(Path file, long offset, byte[] data)
         throws FileNotFoundException, IOException
     {
-    	if(offset < 0 || offset > Integer.MAX_VALUE)
+    	if(offset < 0)
     		throw new IndexOutOfBoundsException();
         
-    	File temp = new File(root, file.toString());
+    	File temp = file.toFile(root);
         
         if(!temp.exists() || temp.isDirectory())
         	throw new FileNotFoundException("The given file does not exist or is a directory.");
         if(!temp.canWrite())
         	throw new IOException("The file is not writable.");
         
-        FileOutputStream fout = new FileOutputStream(temp);
-        fout.flush();
-        try{
-        	fout.write(data, (int) offset, data.length);
-        }catch(Exception e)
+        RandomAccessFile fout = new RandomAccessFile(temp, "rw");
+        fout.seek(offset);
+        try {
+        	fout.write(data);
+        } catch(IOException e)
         {
         	throw new IOException("Threw " + e + " when writing to file.");
         }
@@ -217,10 +218,10 @@ public class StorageServer implements Storage, Command
         	return false;
         }
         
-        File parent = new File(root, file.parent().toString());
+        File parent = file.parent().toFile(root);
         parent.mkdirs();
         
-        File f = new File(root, file.toString());
+        File f = file.toFile(root);
         try {
 			return f.createNewFile();
 		} catch (IOException e) {
@@ -235,7 +236,7 @@ public class StorageServer implements Storage, Command
         	return false;
         }
         
-        return deleteHelper(new File(root, path.toString()));
+        return deleteHelper(path.toFile(root));
     }
     
     private boolean deleteHelper(File f) {

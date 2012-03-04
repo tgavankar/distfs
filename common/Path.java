@@ -178,6 +178,10 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     	if(this.isRoot())
     		throw new IllegalArgumentException("Current path is the root. (Thrown from parent())");
         
+    	if(myPath.size() == 1) {
+    		return new Path();
+    	}
+    	
     	String ppath = "";
         for(int i = 0; i < myPath.size()-1; i++)
         {
@@ -228,7 +232,7 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
     public File toFile(File root)
     {
     	if(root != null)
-    		return new File(root.getPath() + this.toString());
+    		return new File(root, this.toString());
     	else
     		return new File(this.toString());
     }
