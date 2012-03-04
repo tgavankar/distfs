@@ -185,13 +185,15 @@ public class StorageServer implements Storage, Command
     public void stop()
     {
         // TODO: Subclasses are made, now to change the clientSkeleton and command Skeleton 
-    	// to match those subclasses?
-    	/*clSkeleton<Storage> clientTemp = (clSkeleton<Storage>) clientSkeleton;
-    	cmSkeleton<Command> commandTemp = (cmSkeleton<Command>) commandSkeleton;
-    	clientTemp.stop();
-    	commandTemp.stop();
-    	if(clientStopped && commandStopped)
-    		stopped(null);*/
+    	// to match those subclasses? If so use the commented code below:
+    	
+    	/*
+    	clientSkeleton.stop();
+        commandSkeleton.stop();
+        if(clientStopped && commandStopped)
+            stopped(null);
+        */
+    	
     }
 
     /** Called when the storage server has shut down.
