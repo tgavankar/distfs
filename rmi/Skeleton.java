@@ -268,6 +268,7 @@ public class Skeleton<T>
                         synchronized(this) {
                             if(result == null) {
                                 try {
+                                	m.setAccessible(true);
                                     result = m.invoke(server, args);
                                 }
                                 catch(InvocationTargetException e) {
