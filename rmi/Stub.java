@@ -3,8 +3,6 @@ package rmi;
 import java.net.*;
 import java.lang.reflect.*;
 import java.io.*;
-import java.util.Arrays;
-
 /** RMI stub factory.
 
     <p>
@@ -20,88 +18,6 @@ import java.util.Arrays;
  */
 public abstract class Stub
 {
-    private static <T> void checkIfRemoteInterface(Class<T> c) throws Error {
-        Method methods[] = c.getDeclaredMethods();
-        for (int i=0; i < methods.length; i++) {  
-            Method m = methods[i];
-            Class exc[] = m.getExceptionTypes();
-            boolean is_remote = false;
-            for(int j=0; j < exc.length; j++) {
-                if(exc[j].getName().equals("rmi.RMIException")) {
-                    is_remote = true;
-                    break;
-                }
-            }
-            if(!is_remote) {
-                throw new Error();
-            }
-        }
-    }
-    
-    public static class RMIHandler implements java.lang.reflect.InvocationHandler {
-        public InetSocketAddress address;
-        
-        public RMIHandler(InetSocketAddress address) {
-            this.address = address;
-        }
-        
-        public InetSocketAddress getAddress() {
-            return address;
-        }
-        
-        public Object invoke(Object proxy, Method m, Object[] args) throws Throwable {
-            if(m.getName().equals("equals") && m.getReturnType().getName().equals("boolean") && args.length == 1) {
-                Object other = args[0];
-
-                if(other == null)
-                    return false;
-                    
-                return (proxy.getClass().equals(other.getClass()) && (((RMIHandler) java.lang.reflect.Proxy.getInvocationHandler(proxy)).getAddress().toString()).equals(((RMIHandler) java.lang.reflect.Proxy.getInvocationHandler(other)).getAddress().toString()));
-            }
-            
-            if(m.getName().equals("hashCode") && m.getReturnType().getName().equals("int") && args == null) {
-                return 1013 * (proxy.getClass().hashCode()) ^ 1009 * (((RMIHandler) java.lang.reflect.Proxy.getInvocationHandler(proxy)).getAddress().hashCode());
-            }
-            
-            if(m.getName().equals("toString") && m.getReturnType().equals(String.class) && args == null) {
-                return proxy.getClass().toString() + ", via " + ((RMIHandler) java.lang.reflect.Proxy.getInvocationHandler(proxy)).getAddress().toString();
-            }
-            
-            Object result = null;
-            
-            try {
-                Socket socket = new Socket();
-                socket.connect(address);
-                ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
-                oos.flush();
-                ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
-                MethodToCall message = new MethodToCall(m, args);
-                oos.writeObject(message);
-                oos.flush();
-                
-                try {
-                    result = ois.readObject();
-                }
-                catch(IOException e) {
-                    throw new RMIException("Error reading object");
-                }
-                catch(ClassNotFoundException r) {
-                    throw new RMIException("Class not found");
-                }
-
-                ois.close();
-                oos.close();
-            } catch(IOException e) {
-                throw new RMIException("IO Error");
-            }
-            
-            if(result instanceof Throwable) {
-                throw (Throwable) result;
-            }
-            return result;
-        }
-    
-    }
 
     /** Creates a stub, given a skeleton with an assigned adress.
 
@@ -134,26 +50,133 @@ public abstract class Stub
     public static <T> T create(Class<T> c, Skeleton<T> skeleton)
         throws UnknownHostException
     {
-        if(c == null || skeleton == null) {
-            throw new NullPointerException();
-        }
-        
-        checkIfRemoteInterface(c);
-        
-        InetAddress localhost = InetAddress.getLocalHost();
-        InetSocketAddress address = skeleton.getAddress();
-        
-        if(address == null) {
-            throw new IllegalStateException();
-        }
-        
-        Class[] interfaces = { c };
-        
-        return c.cast(java.lang.reflect.Proxy.newProxyInstance(
-             c.getClassLoader(),
-             interfaces,
-             new RMIHandler(address)));
+		if(c == null || skeleton == null)
+			throw new NullPointerException("c or skeleton null in Stub.create.\n");
+	    Method m[] = c.getMethods();
+	    for(Method v : m)
+	    {
+		   int yes = 0; 
+   		   for(Class exceptions : v.getExceptionTypes())
+		   {
+			    
+				if((exceptions.getName().equals("rmi.RMIException"))) 
+				{
+					yes = 1;
+				}
+		   }
+		   if(yes == 0)
+			   throw new Error();
+     	}
+		if(!skeleton.isStarted())
+		{
+			throw new IllegalStateException("IllegalState exception from Stub.create.\n");
+		}
+		if(skeleton.getAddress().getAddress().getLocalHost() == null)
+		{
+			throw new UnknownHostException("Unknowhost exception from Stub.create.\n");
+		}
+		ProxyClass<T> handler = new ProxyClass<T>(c,skeleton);
+		
+		T result = c.cast ((java.lang.reflect.Proxy.newProxyInstance(c.getClassLoader(),
+						new Class[] { c }, handler)));
+	    
+		
+		return result;
+		    
+	
     }
+	
+	private static class ProxyClass<T> implements InvocationHandler
+	{
+		
+		private Class<T> c;
+		private int port;
+		private InetAddress address;
+	
+		public ProxyClass(Class<T> c, Skeleton<T> skeleton)
+		{
+			this.c = c;
+			address = skeleton.getAddress().getAddress();
+			port = skeleton.getAddress().getPort();
+		}
+		public ProxyClass(Class<T> c, InetSocketAddress a)
+		{
+			this.c = c;
+			address = a.getAddress();
+			port = a.getPort();
+		}
+
+
+		public InetAddress getAddress()
+		{
+			return address;
+		}
+		public int getPort()
+		{
+			return port;
+		}
+		public Object invoke(Object proxy, Method m, Object[] args) throws Throwable
+		{
+			if(m.getName().equals("equals"))
+			{
+				if(args[0] == null)
+					return false;
+			   ProxyClass<T> hand = (ProxyClass<T>)java.lang.reflect.Proxy.getInvocationHandler(args[0]);
+
+				if(proxy.getClass().equals(args[0].getClass()))
+				{
+					if(hand.getAddress().equals(address) && hand.getPort() == port)
+						return true;
+					else
+						return false;
+				}
+				else return false;
+			}
+			
+			if(m.getName().equals("hashCode"))
+			{
+				ProxyClass chash = (ProxyClass)java.lang.reflect.Proxy.getInvocationHandler(proxy);
+				return 2749*chash.getAddress().hashCode() + 3571*chash.getPort() + 
+					139*c.hashCode();
+			}
+
+			if(m.getName().equals("toString"))
+			{
+				ProxyClass cString = (ProxyClass)java.lang.reflect.Proxy.getInvocationHandler(proxy);
+				return cString.getAddress().toString() + "//" + cString.getPort() + " " + c.toString();
+			}
+			Socket clientSocket = null;
+			ObjectOutputStream out = null;
+			ObjectInputStream in = null;
+	
+			try{
+				clientSocket = new Socket(address,port);
+				out = new ObjectOutputStream(clientSocket.getOutputStream());
+				out.flush();
+				in = new ObjectInputStream(clientSocket.getInputStream());			
+				Wrapper wrap = new Wrapper(m,args);
+				out.writeObject(wrap);
+			}catch(Exception e){
+				throw new RMIException("Exception:" + e);
+			}
+			
+			Object result = in.readObject();
+			if(result instanceof InvocationTargetException)
+			{
+				throw(((InvocationTargetException)result).getTargetException());
+			}
+
+			try{
+				out.close();
+				in.close();
+				clientSocket.close();
+			}catch(Exception e){
+				throw new RMIException(e);
+			}
+	
+			return result;
+		}
+	}
 
     /** Creates a stub, given a skeleton with an assigned address and a hostname
         which overrides the skeleton's hostname.
@@ -188,25 +211,36 @@ public abstract class Stub
     public static <T> T create(Class<T> c, Skeleton<T> skeleton,
                                String hostname)
     {
-        if(c == null || skeleton == null || hostname == null) {
-            throw new NullPointerException();
-        }
-        
-        checkIfRemoteInterface(c);
-        
-        InetSocketAddress address = skeleton.getAddress();
-        
-        
-        if(address == null || address.getPort() == -1) {
-            throw new IllegalStateException();
-        }
-        
-        Class[] interfaces = { c };
-        
-        return c.cast(java.lang.reflect.Proxy.newProxyInstance(
-             c.getClassLoader(),
-             interfaces,
-             new RMIHandler(new InetSocketAddress(hostname, address.getPort()))));
+    	if(c == null || skeleton == null || hostname == null)
+			throw new NullPointerException("c or skeleton or hostname null in Stub.create.\n");
+	    Method m[] = c.getMethods();
+	    for(Method v : m)
+	    {
+		   int yes = 0; 
+   		   for(Class exceptions : v.getExceptionTypes())
+		   {
+			    
+				if((exceptions.getName().equals("rmi.RMIException"))) 
+				{
+					yes = 1;
+				}
+		   }
+		   if(yes == 0)
+			   throw new Error();
+     	}
+		if(skeleton.getAddress().getPort() == 0)
+		{
+			throw new IllegalStateException("IllegalState exception from Stub.create.\n");
+		}
+		InetSocketAddress addr = new InetSocketAddress(hostname,skeleton.getAddress().getPort());
+    	ProxyClass handler = new ProxyClass<T>(c,addr);
+		T result = c.cast ((java.lang.reflect.Proxy.newProxyInstance(c.getClassLoader(),
+						new Class[] { c }, handler)));
+	    
+		
+		return result;
+		
+    
     }
 
     /** Creates a stub, given the address of a remote server.
@@ -228,18 +262,32 @@ public abstract class Stub
      */
     public static <T> T create(Class<T> c, InetSocketAddress address)
     {
-        if(c == null || address == null) {
-            throw new NullPointerException();
-        }
-        
-        checkIfRemoteInterface(c);
-        
-     
-        Class[] interfaces = { c };
-        
-        return c.cast(java.lang.reflect.Proxy.newProxyInstance(
-             c.getClassLoader(),
-             interfaces,
-             new RMIHandler(address)));
+    	if(c == null || address == null)
+			throw new NullPointerException("c or address null in Stub.create.\n");
+	    Method m[] = c.getMethods();
+	    for(Method v : m)
+	    {
+		   int yes = 0; 
+   		   for(Class exceptions : v.getExceptionTypes())
+		   {
+			    
+				if((exceptions.getName().equals("rmi.RMIException"))) 
+				{
+					yes = 1;
+				}
+		   }
+		   if(yes == 0)
+			   throw new Error();
+     	}
+		ProxyClass handler = new ProxyClass<T>(c,address);
+		T result = c.cast ((java.lang.reflect.Proxy.newProxyInstance(c.getClassLoader(),
+						new Class[] { c }, handler)));
+	    
+		
+		return result;
+		
     }
 }
+
+
+

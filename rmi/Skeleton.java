@@ -1,11 +1,9 @@
 package rmi;
 
+import java.util.Arrays;
 import java.net.*;
-import java.lang.*;
 import java.lang.reflect.*;
 import java.io.*;
-import java.util.ArrayList;
-
 /** RMI skeleton
 
     <p>
@@ -30,39 +28,12 @@ import java.util.ArrayList;
 */
 public class Skeleton<T>
 {
-    Class<T> c;
-    T server;
-    Listener<T> listenServer;
-    Thread listenThread;
-    InetSocketAddress address;
-
-    public synchronized boolean isListenerActive() {
-        return listenServer.isFullyActive();
-    }
-    
-    public synchronized InetSocketAddress getAddress() {
-        return this.address;
-    }
-    
-    private static <T> void checkIfRemoteInterface(Class<T> c) throws Error {
-        Method methods[] = c.getDeclaredMethods();
-        for (int i=0; i < methods.length; i++) {  
-            Method m = methods[i];
-            Class exc[] = m.getExceptionTypes();
-            boolean is_remote = false;
-            for(int j=0; j < exc.length; j++) {
-                if(exc[j].getName().equals("rmi.RMIException")) {
-                    is_remote = true;
-                    break;
-                }
-            }
-            if(!is_remote) {
-                throw new Error();
-            }
-        }
-    }
-    
-    
+	private InetSocketAddress myaddress;
+	private T myserver;
+	private Class<T> myc;
+	private Listener listenThread;
+	private ServerSocket listenSocket;
+	
     /** Creates a <code>Skeleton</code> with no initial server address. The
         address will be determined by the system when <code>start</code> is
         called. Equivalent to using <code>Skeleton(null)</code>.
@@ -84,19 +55,27 @@ public class Skeleton<T>
      */
     public Skeleton(Class<T> c, T server)
     {
-        if(c == null || server == null) {
-            throw new NullPointerException();
-        }
-       
-        checkIfRemoteInterface(c);
-
-        this.c = c;
-        this.server = server;
-        this.listenServer = new Listener<T>(address, this);
-        this.listenThread = new Thread(listenServer);
+		if(c == null || server == null)
+			throw new NullPointerException("c or server is null.\n");
+	    Method m[] = c.getMethods();
+	    for(Method v : m)
+	    {
+		   int yes = 0; 
+   		   for(Class exceptions : v.getExceptionTypes())
+		   {
+			    
+				if((exceptions.getName().equals("rmi.RMIException"))) 
+				{
+					yes = 1;
+				}
+		   }
+		   if(yes == 0)
+			   throw new Error();
+     	}   
+	   myc = c;
+	   myserver = server;
+	   myaddress = new InetSocketAddress(10000);
     }
-
-    
     /** Creates a <code>Skeleton</code> with the given initial server address.
 
         <p>
@@ -117,17 +96,27 @@ public class Skeleton<T>
      */
     public Skeleton(Class<T> c, T server, InetSocketAddress address)
     {
-        if(c == null || server == null) {
-            throw new NullPointerException();
-        }
-
-        checkIfRemoteInterface(c);
-
-        this.c = c;
-        this.server = server;
-        this.address = address;
-        this.listenServer = new Listener<T>(address, this);
-        this.listenThread = new Thread(listenServer);
+		if(c == null || server == null)
+			throw new NullPointerException("c or server is null.\n");
+	    Method m[] = c.getMethods();
+	    for(Method v : m)
+	    {
+		   int yes = 0; 
+   		   for(Class exceptions : v.getExceptionTypes())
+		   {
+			    
+				if((exceptions.getName().equals("rmi.RMIException"))) 
+				{
+					yes = 1;
+				}
+		   }
+		   if(yes == 0)
+			   throw new Error();
+     	}
+	
+		myc = c;
+		myserver = server;
+		myaddress = address;
     }
 
     /** Called when the listening thread exits.
@@ -198,23 +187,19 @@ public class Skeleton<T>
      */
     public synchronized void start() throws RMIException
     {
-        try {
-            this.address = this.listenServer.bind();
-            this.listenThread.start();  
-        }
-        catch(IllegalThreadStateException e) {
-            throw new RMIException("Thread was already started.");
-        }
-
-        try {
-            Thread.sleep(10);  // listener is synchronized as is start(), so sleep to let listener start
-        }
-        catch(InterruptedException e) {
-            throw new RMIException("Start thread interrputed");
-        }
-
-        return;
-        
+		if(isStarted())
+		{
+			throw new RMIException("Skeleton is already running.");
+		}
+		
+		try{
+			listenSocket = new ServerSocket(myaddress.getPort());
+			listenThread = new Listener();
+			listenThread.start();
+		}catch(Exception e){
+			throw new RMIException("Listening thread failed to make or start.");
+		}
+	
     }
 
     /** Stops the skeleton server, if it is already running.
@@ -228,196 +213,125 @@ public class Skeleton<T>
      */
     public synchronized void stop()
     {
-        this.listenServer.stop();
-        while(this.listenServer.isFullyActive()) { }
-        this.stopped(null);
+		if(listenThread.isAlive())
+		{
+			listenThread.stopper();
+			try{
+				listenSocket.close();
+			}catch(Exception e){
+			}
+
+			try{
+				listenThread.join();
+				stopped(null);
+			}catch(InterruptedException e){
+				stopped(e);
+			}
+		}
     }
-    
-    public class WorkerRunnable<T> implements Runnable{
+	
 
-        protected Socket clientSocket;
-        protected Skeleton<T> skeleton;
-        
+/*  ALL HELPER METHODS */
 
-        public WorkerRunnable(Socket clientSocket, Skeleton<T> skeleton) {
-            this.clientSocket = clientSocket;
-            this.skeleton = skeleton;
-        }
 
-        public void run() {
-            try {
-                ObjectOutputStream oos = new ObjectOutputStream(clientSocket.getOutputStream());
-                oos.flush();
-                ObjectInputStream ois = new ObjectInputStream(clientSocket.getInputStream());
-                
-                MethodToCall message = null;
-                Object result = null;
-                
-                try {
-                    message = (MethodToCall) ois.readObject();
-                    Method m = null;
-                    try {
-                        m = server.getClass().getMethod(message.getMethod(), message.getTypes());
-                    }
-                    catch(NoSuchMethodException e) {
-                        result = e;
-                    }
-                    Object[] args = message.getArgs();
-                    
-                    try {
-                        synchronized(this) {
-                            if(result == null) {
-                                try {
-                                    result = m.invoke(server, args);
-                                }
-                                catch(InvocationTargetException e) {
-                                    result = e.getTargetException();
-                                }
-                            }
-                        }
-                    }
-                    catch(Throwable e) {
-                        result = e;
-                    }
-                }
-                catch(IOException e) {
-                    result = new RMIException("IOException");
-                }
-                catch(ClassNotFoundException r) {
-                    result = new RMIException("Class not found");
-                }
-                
-                oos.writeObject(result);
-                oos.flush();
-                
-                ois.close();
-                oos.close();
-            } catch (IOException e) {
-                this.skeleton.service_error(new RMIException("IOException"));
-            }
-        }
-    }
-    
-    private class Listener<T> implements Runnable {
-        protected InetSocketAddress address;
-        protected ServerSocket serverSocket;
-        protected Skeleton<T> skeleton;
-        protected boolean isStopped;  // command to stop listening
-        protected Thread currentThread;
-        protected volatile ArrayList<Thread> workers;
-        protected volatile boolean isFullyActive;  // has actually stopped listening/working
-        
-        public Listener(InetSocketAddress address, Skeleton<T> skeleton) {
-            this.address = address;
-            this.skeleton = skeleton;
-            this.isStopped = false;
-            this.workers = new ArrayList<Thread>();
-            try {
-                this.serverSocket = new ServerSocket();
-            } catch (IOException e) {
-                this.skeleton.listen_error(new RMIException("Cannot create new ServerSocket"));
-            }
-        }
-                
-        public synchronized InetSocketAddress getRunningAddress() {
-            InetAddress localip = serverSocket.getInetAddress();
-            int port = serverSocket.getLocalPort();
-            if(port == -1) {
-                return null;
-            }
-            return new InetSocketAddress(localip, port);
-        }
-        
-        public synchronized InetSocketAddress bind() {
-            try {
-                this.serverSocket.bind(this.address);
-            } catch (IOException e) {
-                this.skeleton.listen_error(new RMIException("Cannot open port"));
-            }
-            
-            return getRunningAddress();
-        }
-        
-        public void run() {
-            synchronized(this) {
-                this.currentThread = Thread.currentThread();
-            }
+	/* This class is used to process method requests. */
+	private class Worker extends Thread
+	{
+		Socket socket = null;
+		ObjectInputStream in = null;
+		ObjectOutputStream out = null;
 
-            try {
-                this.serverSocket.setSoTimeout(50);
-            } catch (SocketException e) {
-                if(!this.skeleton.listen_error(new RMIException("Cannot set socket timeout"))) {
-                    try {
-                        this.serverSocket.close();
-                    } catch (IOException f) {
-                        if(!this.skeleton.listen_error(new RMIException("Error closing server"))) {
-                            return;
-                        }
-                    }
-                    this.isFullyActive = false;
-                    return;
-                }
-            }
-            while(!isStopped()){
-                Socket clientSocket = null;
-                try {
-                    synchronized(this) {
-                        this.isFullyActive = true;
-                        clientSocket = this.serverSocket.accept();
-                    }
-                } catch(SocketTimeoutException e) {
-                    if(isStopped()) {
-                        break;
-                    }
-                    else {
-                        continue;
-                    }
-                } catch (IOException e) {
-                    if(isStopped()) {
-                        this.isFullyActive = false;
-                        break;
-                    }
-                    if(!this.skeleton.listen_error(new RMIException("Error accepting client connection"))) {
-                        this.isFullyActive = false;
-                        break;
-                    }
-                }
-               
-                Thread worker = new Thread(new WorkerRunnable<T>(clientSocket, this.skeleton));
-                worker.start();
-                workers.add(worker);
-            }
+		public Worker(Socket sock)
+		{
+			socket = sock;
+		}
 
-            for(Thread w : workers) {
-                try {
-                    w.join();
-                }
-                catch(InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
+		public void run()
+		{
+			try{
+				out = new ObjectOutputStream(socket.getOutputStream());
+				out.flush();
 
-            try {
-                this.serverSocket.close();
-            } catch (IOException e) {
-                if(!this.skeleton.listen_error(new RMIException("Error closing server"))) {
-                    this.skeleton.stop();
-                }
-            }
-            this.isFullyActive = false;
-        }
-        
-        public synchronized boolean isFullyActive() {
-            return this.isFullyActive;
-        }
-        
-        private synchronized boolean isStopped() {
-            return this.isStopped;
-        }
+				in = new ObjectInputStream(socket.getInputStream());
+				Wrapper wrap = (Wrapper)in.readObject();
+				String name = wrap.getName();
+				Method m = myserver.getClass().getMethod(name,wrap.getpTypes());
+				Object result;
+				try{
+					result= m.invoke(myserver,wrap.getP());
+				}catch(Exception e){
+					if(e instanceof InvocationTargetException)
+						result = e;
+					else
+						result = new RMIException("Invoke failed.");
+				}
+				out.writeObject(result);
+			}catch(Exception e){
+				service_error(new RMIException("Exception: "+e+" in worker"));
+			}
 
-        public void stop(){
-            this.isStopped = true;
-        }
+			try{
+				socket.close();
+				out.close();
+				in.close();
+			}catch(Exception e){
+				service_error(new RMIException("Exception: "+e+" in worker"));
+			}
+		}
 
-    }
+		public void processRequest(String string) 
+		{
+			System.out.println("Requst: "+string+".\n");
+		}
+	}
+
+	/* Used to listen to socket*/
+	 private class Listener extends Thread 
+	{
+		private boolean isRunning;
+
+		public Listener()
+		{
+			isRunning = true;
+		}
+		
+		public void stopper()
+		{
+			isRunning = false;
+		}
+
+		public void run() 
+		{
+			while(isRunning)
+			{
+				try{
+					Socket connection = listenSocket.accept();
+					Worker work = new Worker(connection);
+					work.start();
+				}catch(Exception e){
+					listen_error(e);
+				}
+			}
+			
+			if(listenSocket != null)
+			{
+				try{
+					listenSocket.close();
+				}catch(Exception e){
+					listen_error(e);
+				}
+			}
+		}
+	}
+
+	/* Used to see what the skeleton's address is. */
+	public InetSocketAddress getAddress()
+	{
+		return myaddress;
+	}
+
+	public boolean isStarted()
+	{
+		return (listenThread != null && listenThread.isAlive());
+	}
 }
