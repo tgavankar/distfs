@@ -303,7 +303,12 @@ public class StorageServer implements Storage, Command
         throws RMIException, FileNotFoundException, IOException
     {
 		// Handle files larger than heap memory
-        throw new UnsupportedOperationException("not implemented");
+        if(file == null || server == null)
+        	throw new NullPointerException("The file or server given was null.");
+        File tempFile = file.toFile(null);
+        if(!tempFile.exists() || tempFile.isDirectory())
+        	throw new FileNotFoundException("File does not exist or is a directory.");
+		return false;
     }
     
     
