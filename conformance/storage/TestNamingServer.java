@@ -17,7 +17,7 @@ import naming.*;
     <li>The correct file list has been sent.</li>
     </ul>
  */
-class TestNamingServer implements naming.Registration
+public class TestNamingServer implements naming.Registration
 {
     /** Test object that is running this server. */
     private final Test          test;

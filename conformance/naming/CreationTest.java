@@ -448,7 +448,7 @@ public class CreationTest extends NamingTest
         is expected, or the call is received with the wrong argument, the server
         fails the test.
      */
-    private class CreationTestStorageServer extends TestStorageServer
+    public class CreationTestStorageServer extends TestStorageServer
     {
         /** Creates the test storage server. */
         CreationTestStorageServer()
