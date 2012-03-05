@@ -308,6 +308,7 @@ public class StorageServer implements Storage, Command
         File tempFile = file.toFile(null);
         if(!tempFile.exists() || tempFile.isDirectory())
         	throw new FileNotFoundException("File does not exist or is a directory.");
+		return false;
     }
     
     
