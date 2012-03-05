@@ -8,7 +8,7 @@ import java.io.FileNotFoundException;
     <p>
     This class is used in multiple tests.
  */
-class TestServer implements TestInterface
+public class TestServer implements TestInterface
 {
     /** The sleeping thread does not return until this becomes
         <code>false</code>. */
