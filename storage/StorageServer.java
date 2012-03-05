@@ -2,6 +2,7 @@ package storage;
 
 import java.io.*;
 import java.net.*;
+import java.util.Arrays;
 
 import common.*;
 import rmi.*;
@@ -219,14 +220,15 @@ public class StorageServer implements Storage, Command
         throws FileNotFoundException, IOException
     {
         File f = file.toFile(root);
-        
-    	if(offset < 0 || offset > Integer.MAX_VALUE || length < 0 || offset + length > f.length())
-    		throw new IndexOutOfBoundsException();
-        
+
         if(!f.canRead() || f.isDirectory()) {
         	throw new FileNotFoundException();
         }
         
+    	if(offset < 0 || offset > Integer.MAX_VALUE || length < 0 || offset + length > f.length())
+    		throw new IndexOutOfBoundsException();
+        
+      
         RandomAccessFile reader = new RandomAccessFile(f, "r");
         
         reader.seek(offset);
@@ -270,11 +272,14 @@ public class StorageServer implements Storage, Command
         }
         
         File parent = file.parent().toFile(root);
+        
         parent.mkdirs();
         
         File f = file.toFile(root);
+        
+
         try {
-			return f.createNewFile();
+        	return f.createNewFile();
 		} catch (IOException e) {
 			return false;
 		}
@@ -305,10 +310,34 @@ public class StorageServer implements Storage, Command
 		// Handle files larger than heap memory
         if(file == null || server == null)
         	throw new NullPointerException("The file or server given was null.");
-        File tempFile = file.toFile(null);
-        if(!tempFile.exists() || tempFile.isDirectory())
-        	throw new FileNotFoundException("File does not exist or is a directory.");
-		return false;
+        
+       	server.read(file, 0, 1);
+        
+        if(file.toFile(root).exists()) {
+        	delete(file);
+        }
+
+        if(!create(file)) {
+        	throw new IOException("File failed to be created");
+        }
+        
+        long filesize = server.size(file);
+        
+        int buffsize = 8192; // 8KB buffer
+        
+        long offset = buffsize;
+        byte[] buff = new byte[buffsize];
+        
+        for(long i=0; i*offset<=filesize; i++) {
+        	if(i*offset+buffsize > filesize) {
+        		buff = server.read(file, i*offset, (int) (filesize - i*offset));
+        		write(file, i*offset, Arrays.copyOfRange(buff, 0, (int) (filesize - i*offset)));
+        	} else {
+        		buff = server.read(file, i*offset, buff.length);
+        		write(file, i*offset, buff);
+        	}
+        }
+        return true;
     }
     
     
