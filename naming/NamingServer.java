@@ -316,7 +316,7 @@ public class NamingServer implements Service, Registration
     
     // The following public methods are documented in Service.java.
     @Override
-    public void lock(Path path, boolean exclusive) throws FileNotFoundException
+    public synchronized void lock(Path path, boolean exclusive) throws FileNotFoundException
     {
         if(path == null)
         	throw new NullPointerException("The path given was null.");
@@ -344,7 +344,7 @@ public class NamingServer implements Service, Registration
     }
 
     @Override
-    public void unlock(Path path, boolean exclusive)
+    public synchronized void unlock(Path path, boolean exclusive)
     {
     	if(path == null)
         	throw new NullPointerException("The path given was null.");
