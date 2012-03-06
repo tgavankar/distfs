@@ -9,9 +9,9 @@ import rmi.*;
 public abstract class NamingStubs
 {
     /** Default naming server client service port. */
-    public static final int     SERVICE_PORT = 6000;
+    public static final int     SERVICE_PORT = 6005;
     /** Default naming server registration port. */
-    public static final int     REGISTRATION_PORT = 6001;
+    public static final int     REGISTRATION_PORT = 6005;
 
     /** Returns a stub for a naming server client service interface.
 

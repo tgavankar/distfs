@@ -283,7 +283,9 @@ public class NamingServer implements Service, Registration
     @Override
     public boolean delete(Path path) throws FileNotFoundException
     {
-    	throw new UnsupportedOperationException("not implemented");
+    	if(!path.toFile(null).exists())
+    		throw new FileNotFoundException("The path given does not lead to a file or directory.");
+    	return false;
     }
 
     @Override
