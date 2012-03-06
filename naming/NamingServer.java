@@ -9,8 +9,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import rmi.*;
 import common.*;
 import storage.*;
-import storage.StorageServer.clSkeleton;
-import storage.StorageServer.cmSkeleton;
 
 /** Naming server.
 
