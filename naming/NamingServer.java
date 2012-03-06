@@ -7,6 +7,8 @@ import java.util.*;
 import rmi.*;
 import common.*;
 import storage.*;
+import storage.StorageServer.clSkeleton;
+import storage.StorageServer.cmSkeleton;
 
 /** Naming server.
 
@@ -34,9 +36,56 @@ import storage.*;
 public class NamingServer implements Service, Registration
 {
     FsNode fsRoot;
-    Skeleton<Service> clientSkeleton;
-    Skeleton<Registration> regisSkeleton;
+    clSkeleton<Service> clientSkeleton;
+    regSkeleton<Registration> regisSkeleton;
 	HashMap<Command, Storage> storageList;
+	boolean clientStopped = false;
+	boolean regStopped = false;
+	private class clSkeleton<Storage> extends Skeleton<Storage>
+	{
+		
+		public clSkeleton(Class<Storage> arg0, Storage arg1) {
+			super(arg0, arg1);
+		}
+		
+		public clSkeleton(Class<Storage> arg0, Storage arg1,
+				InetSocketAddress arg2) {
+			super(arg0, arg1, arg2);
+		}
+
+		@Override
+		protected void stopped(Throwable e)
+		{
+			synchronized(clSkeleton.this)
+			{
+				clientStopped = true;
+				clSkeleton.this.notifyAll();
+			}
+		}
+	}
+	private class regSkeleton<Registration> extends Skeleton<Registration>
+	{
+		
+
+		public regSkeleton(Class<Registration> arg0, Registration arg1) {
+			super(arg0, arg1);
+		}
+		
+		public regSkeleton(Class<Registration> arg0, Registration arg1,
+				InetSocketAddress arg2) {
+			super(arg0, arg1, arg2);
+		}
+
+		@Override
+		protected void stopped(Throwable e)
+		{
+			synchronized(regSkeleton.this)
+			{
+				regStopped = true;
+				regSkeleton.this.notifyAll();
+			}
+		}
+	}
     
     private class FsNode {
     	HashMap<String, FsNode> children;
@@ -100,8 +149,8 @@ public class NamingServer implements Service, Registration
     public NamingServer()
     {
         fsRoot = new FsNode("");
-    	clientSkeleton = new Skeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT));
-    	regisSkeleton = new Skeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT));
+    	clientSkeleton = new clSkeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT));
+    	regisSkeleton = new regSkeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT));
     	storageList = new HashMap<Command, Storage>();
     
     }
@@ -135,9 +184,11 @@ public class NamingServer implements Service, Registration
      */
     public void stop()
     {
-        clientSkeleton.stop();
+    	clientSkeleton.stop();
         regisSkeleton.stop();
-        stopped(null);
+        if(clientStopped && regStopped)
+            stopped(null);
+        
     }
 
     /** Indicates that the server has completely shut down.
@@ -161,6 +212,7 @@ public class NamingServer implements Service, Registration
         	throw new NullPointerException("The path given was null.");
         if(!path.toFile(null).exists())
         	throw new FileNotFoundException("The path does not point to a file.");
+        
     }
 
     @Override
@@ -283,8 +335,10 @@ public class NamingServer implements Service, Registration
     @Override
     public boolean delete(Path path) throws FileNotFoundException
     {
-    	if(!path.toFile(null).exists())
-    		throw new FileNotFoundException("The path given does not lead to a file or directory.");
+    	if(path == null)
+    		throw new NullPointerException("Path was null.");
+    	Storage temp = this.getStorage(path);
+    	
     	return false;
     }
 
