@@ -39,7 +39,7 @@ public class NamingServer implements Service, Registration
     private Skeleton<Service> clientSkeleton;
     private Skeleton<Registration> regisSkeleton;
 	private HashMap<Command, Storage> storageList;
-	private ReadWriteLock lock;
+	private HashMap<Path, ReadWriteLock> lockList;
 	    
     private class FsNode {
     	HashMap<String, FsNode> children;
@@ -106,7 +106,7 @@ public class NamingServer implements Service, Registration
     	clientSkeleton = new Skeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT));
     	regisSkeleton = new Skeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT));
     	storageList = new HashMap<Command, Storage>();
-    	lock = new ReadWriteLock();
+    	lockList = new HashMap<Path, ReadWriteLock>();
     }
 
     /** Starts the naming server.
@@ -156,164 +156,171 @@ public class NamingServer implements Service, Registration
     {
     }
 
-    public class ReadWriteLock{
+    public class ReadWriteLock {
 
-    	  private Map<Thread, Integer> readingThreads =
-    	       new HashMap<Thread, Integer>();
+    	private int readAccesses = 0;
 
-    	   private int writeAccesses    = 0;
-    	   private int writeRequests    = 0;
-    	   private Thread writingThread = null;
+    	private int writeAccesses    = 0;
+    	private int writeRequests    = 0;
 
 
-    	  public synchronized void lockRead() throws InterruptedException{
-    	    Thread callingThread = Thread.currentThread();
-    	    while(! canGrantReadAccess(callingThread)){
-    	      wait();
-    	    }
-
-    	    readingThreads.put(callingThread,
-    	     (getReadAccessCount(callingThread) + 1));
-    	  }
-
-    	  private boolean canGrantReadAccess(Thread callingThread){
-    	    if( isWriter(callingThread) ) return true;
-    	    if( hasWriter()             ) return false;
-    	    if( isReader(callingThread) ) return true;
-    	    if( hasWriteRequests()      ) return false;
-    	    return true;
-    	  }
-
-
-    	  public synchronized void unlockRead(){
-    	    Thread callingThread = Thread.currentThread();
-    	    if(!isReader(callingThread)){
-    	      throw new IllegalMonitorStateException("Calling Thread does not" +
-    	        " hold a read lock on this ReadWriteLock");
-    	    }
-    	    int accessCount = getReadAccessCount(callingThread);
-    	    if(accessCount == 1){ readingThreads.remove(callingThread); }
-    	    else { readingThreads.put(callingThread, (accessCount -1)); }
-    	    notifyAll();
-    	  }
-
-    	  public synchronized void lockWrite() throws InterruptedException{
-    	    writeRequests++;
-    	    Thread callingThread = Thread.currentThread();
-    	    while(! canGrantWriteAccess(callingThread)){
-    	      wait();
-    	    }
-    	    writeRequests--;
-    	    writeAccesses++;
-    	    writingThread = callingThread;
-    	  }
-
-    	  public synchronized void unlockWrite() throws InterruptedException{
-    	    if(!isWriter(Thread.currentThread())){
-    	      throw new IllegalMonitorStateException("Calling Thread does not" +
-    	        " hold the write lock on this ReadWriteLock");
-    	    }
-    	    writeAccesses--;
-    	    if(writeAccesses == 0){
-    	      writingThread = null;
-    	    }
-    	    notifyAll();
-    	  }
-
-    	  private boolean canGrantWriteAccess(Thread callingThread){
-    	    if(isOnlyReader(callingThread))    return true;
-    	    if(hasReaders())                   return false;
-    	    if(writingThread == null)          return true;
-    	    if(!isWriter(callingThread))       return false;
-    	    return true;
-    	  }
-
-
-    	  private int getReadAccessCount(Thread callingThread){
-    	    Integer accessCount = readingThreads.get(callingThread);
-    	    if(accessCount == null) return 0;
-    	    return accessCount.intValue();
-    	  }
-
-
-    	  private boolean hasReaders(){
-    	    return readingThreads.size() > 0;
-    	  }
-
-    	  private boolean isReader(Thread callingThread){
-    	    return readingThreads.get(callingThread) != null;
-    	  }
-
-    	  private boolean isOnlyReader(Thread callingThread){
-    	    return readingThreads.size() == 1 &&
-    	           readingThreads.get(callingThread) != null;
-    	  }
-
-    	  private boolean hasWriter(){
-    	    return writingThread != null;
-    	  }
-
-    	  private boolean isWriter(Thread callingThread){
-    	    return writingThread == callingThread;
-    	  }
-
-    	  private boolean hasWriteRequests(){
-    	      return this.writeRequests > 0;
-    	  }
-
+    	public synchronized void lockRead() throws InterruptedException {
+    		while(!canGrantReadAccess()){
+    			wait();
+    		}
+    		readAccesses++;
     	}
+
+    	private boolean canGrantReadAccess() {
+    		if(hasWriter() || hasWriteRequests())
+    			return false;
+    		return true;
+    	}
+
+
+    	public synchronized void unlockRead(){
+    		readAccesses--;
+    		notifyAll();
+    	}
+
+    	public synchronized void lockWrite() throws InterruptedException{
+    		writeRequests++;
+    		while(!canGrantWriteAccess()){
+    			wait();
+    		}
+    		writeRequests--;
+    		writeAccesses++;
+    	}
+
+    	public synchronized void unlockWrite() throws InterruptedException{
+    		writeAccesses--;
+    		notifyAll();
+    	}
+
+    	private boolean canGrantWriteAccess(){
+    		if(hasReaders() || hasWriter())
+    			return false;
+    		return true;
+    	}
+
+    	private boolean hasReaders() {
+    		return this.readAccesses > 0;
+    	}
+
+    	private boolean hasWriter() {
+    		return this.writeAccesses > 0;
+    	}
+
+    	private boolean hasWriteRequests() {
+    		return this.writeRequests > 0;
+    	}
+
+    }
     
     // The following public methods are documented in Service.java.
     @Override
-    public synchronized void lock(Path path, boolean exclusive) throws FileNotFoundException
+    public void lock(Path path, boolean exclusive) throws FileNotFoundException
     {
         if(path == null)
         	throw new NullPointerException("The path given was null.");
-        if(!path.toFile(null).exists())
-        	throw new FileNotFoundException("The path does not point to a file.");
         
 
-        if(exclusive) {
-        	try {
-				lock.lockWrite();
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-
-			}
+        if(!isValidPath(path)) {
+        	throw new FileNotFoundException("The path is not valid.");
         }
-        else {
-        	try {
-				lock.lockRead();
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-
-			}
+        
+        List<Path> pathList = getAllParents(path);
+        
+        
+        for(int i=0; i<pathList.size(); i++) {
+        	if(lockList.get(pathList.get(i)) == null) {
+        		lockList.put(pathList.get(i), new ReadWriteLock());
+        	}
         }
+        
+        Collections.sort(pathList);
 
+        for(int i=0; i<pathList.size(); i++) {
+        	if(exclusive && i == pathList.size()-1) {
+            	try {
+    				lockList.get(pathList.get(i)).lockWrite();
+    			} catch (InterruptedException e) {
+    				// TODO Auto-generated catch block
+
+    			}
+            }
+            else {
+            	try {
+            		lockList.get(pathList.get(i)).lockRead();
+    			} catch (InterruptedException e) {
+    				// TODO Auto-generated catch block
+
+    			}
+            }
+        }
+        
 
     }
 
     @Override
-    public synchronized void unlock(Path path, boolean exclusive)
+    public void unlock(Path path, boolean exclusive)
     {
     	if(path == null)
         	throw new NullPointerException("The path given was null.");
-    	if(!path.toFile(null).exists())
-         	throw new IllegalArgumentException("The path does not point to a file.");
-    	
-        if(exclusive) {
-        	try {
-				lock.unlockWrite();
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-			}
+        
+        if(!isValidPath(path)) {
+        	throw new IllegalArgumentException("The path is not valid.");
         }
-        else {
-				lock.unlockRead();
+   	
+   	
+        List<Path> pathList = getAllParents(path);
+        
+      
+        for(int i=0; i<pathList.size(); i++) {
+        	if(lockList.get(pathList.get(i)) == null) {
+        		lockList.put(pathList.get(i), new ReadWriteLock());
+        	}
+        }
+        
+        
+        Collections.sort(pathList);
+
+        Collections.reverse(pathList);
+
+        for(int i=0; i<pathList.size(); i++) {
+        	if(exclusive && i == 0) {
+            	try {
+    				lockList.get(pathList.get(i)).unlockWrite();
+    			} catch (InterruptedException e) {
+    				// TODO Auto-generated catch block
+
+    			}
+            }
+            else {
+        		lockList.get(pathList.get(i)).unlockRead();
+            }
         }
 
     }
 
+    private List<Path> getAllParents(Path p) {
+    	ArrayList<Path> list = new ArrayList<Path>();
+    	
+    	list.add(p);
+    	
+    	while(true) {
+    		try {
+				list.add(p.parent());
+				p = p.parent();
+    		}
+    		catch(IllegalArgumentException e) {
+    			break;
+    		}
+    	}
+    	
+    	return list;
+    }
+    
     @Override
     public boolean isDirectory(Path path) throws FileNotFoundException
     {
@@ -448,7 +455,41 @@ public class NamingServer implements Service, Registration
         
     	return current.getStorage();
     }
+    
+    private Command getCommand(Path file) throws FileNotFoundException
+    {
+        FsNode current = fsRoot;
+        
+        for(String p : file) {
+        	current = current.getChild(p);
+        	if(current == null) {
+        		throw new FileNotFoundException();
+        	}
+        }
+    	
+        if(!current.isFile()) {
+        	throw new FileNotFoundException();
+        }
+        
+    	return current.getCommand();
+    }
 
+    private boolean isValidPath(Path file)
+    {
+        FsNode current = fsRoot;
+
+        for(String p : file) {
+        	current = current.getChild(p);
+        	if(current == null) {
+        		return false;
+        	}
+        }
+    	
+      
+    	return true;
+    }
+
+    
     // The method register is documented in Registration.java.
     @Override
     public Path[] register(Storage client_stub, Command command_stub,

@@ -143,8 +143,6 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable
      */
     public static Path[] list(File directory) throws FileNotFoundException
     {
-    	// BROKEN: we need to remove the path given by directory.getPath(), but only for the root (so recursive calls shouldn't remove their paths)
-    	// helper function which takes the original path to strip out would be the way to go.
     	if(directory == null)
     		throw new FileNotFoundException("The directory was null.");
     	
