@@ -254,7 +254,12 @@ public class NamingServer implements Service, Registration
      */
     public void stop()
     {
-		clientSkeleton.stop();
+		ThreadGroup tg = Thread.currentThread().getThreadGroup();
+		if(tg != null) {
+			tg.interrupt();
+		}
+    	
+    	clientSkeleton.stop();
     	regisSkeleton.stop();
     }
 
@@ -494,7 +499,7 @@ public class NamingServer implements Service, Registration
             		lockList.get(pathList.get(i)).lockWrite();
     			} catch (InterruptedException e) {
     				// TODO Auto-generated catch block
-
+					return;
     			}
             }
             else {
@@ -515,7 +520,7 @@ public class NamingServer implements Service, Registration
     				}
     			} catch (InterruptedException e) {
     				// TODO Auto-generated catch block
-
+    				return;
     			}
             }
         }
@@ -554,7 +559,7 @@ public class NamingServer implements Service, Registration
     				lockList.get(pathList.get(i)).unlockWrite();
     			} catch (InterruptedException e) {
     				// TODO Auto-generated catch block
-
+    				return;
     			}
             }
             else {
