@@ -43,6 +43,65 @@ public class NamingServer implements Service, Registration
 	private volatile ConcurrentHashMap<Path, Integer> replicationCounter;
 	
     
+	private volatile boolean clientStopped = false;
+	private volatile boolean regisStopped = false;
+	
+	@SuppressWarnings({ "hiding" })
+	private class clSkeleton<Storage> extends Skeleton<Storage>
+	{
+		NamingServer server;
+		public clSkeleton(Class<Storage> arg0, Storage arg1, NamingServer s) {
+			super(arg0, arg1);
+			server = s;
+		}
+		
+		public clSkeleton(Class<Storage> arg0, Storage arg1,
+				InetSocketAddress arg2, NamingServer s) {
+			super(arg0, arg1, arg2);
+			server = s;
+		}
+
+		@Override
+		protected void stopped(Throwable e)
+		{
+			synchronized(clSkeleton.this)
+			{
+				clientStopped = true;
+				if(clientStopped && regisStopped) {
+					server.stopped(null);
+				}
+			}
+		}
+	}
+	@SuppressWarnings("hiding")
+	private class regSkeleton<Registration> extends Skeleton<Registration>
+	{
+		NamingServer server;
+
+		public regSkeleton(Class<Registration> arg0, Registration arg1, NamingServer s) {
+			super(arg0, arg1);
+			server = s;
+		}
+		
+		public regSkeleton(Class<Registration> arg0, Registration arg1,
+				InetSocketAddress arg2, NamingServer s) {
+			super(arg0, arg1, arg2);
+			server = s;
+		}
+
+		@Override
+		protected void stopped(Throwable e)
+		{
+			synchronized(regSkeleton.this)
+			{
+				regisStopped = true;
+				if(regisStopped && clientStopped) {
+					server.stopped(null);
+				}
+			}
+		}
+	}
+	
     private class FsNode {
     	ConcurrentHashMap<String, FsNode> children;
     	String name;
@@ -112,8 +171,8 @@ public class NamingServer implements Service, Registration
     public NamingServer()
     {
         fsRoot = new FsNode("");
-    	clientSkeleton = new Skeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT));
-    	regisSkeleton = new Skeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT));
+    	clientSkeleton = new clSkeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT), this);
+    	regisSkeleton = new regSkeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT), this);
     	storageList = new ConcurrentHashMap<Storage, Command>();
     	lockList = new ConcurrentHashMap<Path, ReadWriteLock>();
     	replicationCounter = new ConcurrentHashMap<Path, Integer>();
@@ -148,9 +207,8 @@ public class NamingServer implements Service, Registration
      */
     public void stop()
     {
-        clientSkeleton.stop();
-        regisSkeleton.stop();
-        stopped(null);
+		clientSkeleton.stop();
+    	regisSkeleton.stop();
     }
 
     /** Indicates that the server has completely shut down.

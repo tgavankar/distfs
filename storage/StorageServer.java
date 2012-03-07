@@ -19,19 +19,22 @@ public class StorageServer implements Storage, Command
 {
 	clSkeleton<Storage> clientSkeleton;
 	cmSkeleton<Command> commandSkeleton;
-	boolean clientStopped = false;
-	boolean commandStopped = false;
+	private volatile boolean clientStopped = false;
+	private volatile boolean commandStopped = false;
 	File root;
+	@SuppressWarnings("hiding")
 	private class clSkeleton<Storage> extends Skeleton<Storage>
 	{
-		
-		public clSkeleton(Class<Storage> arg0, Storage arg1) {
+		StorageServer server;
+		public clSkeleton(Class<Storage> arg0, Storage arg1, StorageServer s) {
 			super(arg0, arg1);
+			server = s;
 		}
 		
 		public clSkeleton(Class<Storage> arg0, Storage arg1,
-				InetSocketAddress arg2) {
+				InetSocketAddress arg2, StorageServer s) {
 			super(arg0, arg1, arg2);
+			server = s;
 		}
 
 		@Override
@@ -40,21 +43,26 @@ public class StorageServer implements Storage, Command
 			synchronized(clSkeleton.this)
 			{
 				clientStopped = true;
-				clSkeleton.this.notifyAll();
+				if(commandStopped && clientStopped) {
+					server.stopped(null);
+				}
 			}
 		}
 	}
+	@SuppressWarnings("hiding")
 	private class cmSkeleton<Command> extends Skeleton<Command>
 	{
-		
+		StorageServer server;
 
-		public cmSkeleton(Class<Command> arg0, Command arg1) {
+		public cmSkeleton(Class<Command> arg0, Command arg1, StorageServer s) {
 			super(arg0, arg1);
+			server = s;
 		}
 		
 		public cmSkeleton(Class<Command> arg0, Command arg1,
-				InetSocketAddress arg2) {
+				InetSocketAddress arg2, StorageServer s) {
 			super(arg0, arg1, arg2);
+			server = s;
 		}
 
 		@Override
@@ -63,7 +71,9 @@ public class StorageServer implements Storage, Command
 			synchronized(cmSkeleton.this)
 			{
 				commandStopped = true;
-				cmSkeleton.this.notifyAll();
+				if(commandStopped && clientStopped) {
+					server.stopped(null);
+				}
 			}
 		}
 	}
@@ -90,17 +100,17 @@ public class StorageServer implements Storage, Command
         }
         
         if(client_port == 0) {
-        	clientSkeleton = new clSkeleton<Storage>(Storage.class, this);
+        	clientSkeleton = new clSkeleton<Storage>(Storage.class, this, this);
         }
         else {
-        	clientSkeleton = new clSkeleton<Storage>(Storage.class, this, new InetSocketAddress(client_port));
+        	clientSkeleton = new clSkeleton<Storage>(Storage.class, this, new InetSocketAddress(client_port), this);
         }
         
         if(command_port == 0) {
-        	commandSkeleton = new cmSkeleton<Command>(Command.class, this);
+        	commandSkeleton = new cmSkeleton<Command>(Command.class, this, this);
         }
         else {
-        	commandSkeleton = new cmSkeleton<Command>(Command.class, this, new InetSocketAddress(command_port));
+        	commandSkeleton = new cmSkeleton<Command>(Command.class, this, new InetSocketAddress(command_port), this);
         }
         
         this.root = root;
@@ -185,15 +195,8 @@ public class StorageServer implements Storage, Command
      */
     public void stop()
     {
-        // TODO: Is this correct?
-    	
-    	
-    	clientSkeleton.stop();
-        commandSkeleton.stop();
-        if(clientStopped && commandStopped)
-            stopped(null);
-        
-    	
+		clientSkeleton.stop();
+    	commandSkeleton.stop();
     }
 
     /** Called when the storage server has shut down.
