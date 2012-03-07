@@ -3,8 +3,8 @@ package naming;
 import java.io.*;
 import java.net.*;
 import java.util.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 
 import rmi.*;
 import common.*;
@@ -38,32 +38,32 @@ public class NamingServer implements Service, Registration
 	private FsNode fsRoot;
     private Skeleton<Service> clientSkeleton;
     private Skeleton<Registration> regisSkeleton;
-	private HashMap<Command, Storage> storageList;
-	private HashMap<Path, ReadWriteLock> lockList;
-	    
+	private volatile ConcurrentHashMap<Storage, Command> storageList;
+	private volatile ConcurrentHashMap<Path, ReadWriteLock> lockList;
+	private volatile ConcurrentHashMap<Path, Integer> replicationCounter;
+	
+    
     private class FsNode {
-    	HashMap<String, FsNode> children;
+    	ConcurrentHashMap<String, FsNode> children;
     	String name;
     	boolean isFile;
-    	private Storage s;
-		private Command c;
+    	private ArrayList<Storage> s;
     	
     	public FsNode(String n) {
     		// Node for directory
-    		children = new HashMap<String, FsNode>();
+    		children = new ConcurrentHashMap<String, FsNode>();
     		name = n;
     		isFile = false;
-    		s = null;
-    		c = null;
+    		s = new ArrayList<Storage>();
     	}
     	
-    	public FsNode(String n, Storage s, Command c) {
+    	public FsNode(String n, Storage s) {
     		// Node for file
     		children = null;
     		name = n;
     		isFile = true;
-    		this.s = s;
-    		this.c = c;
+    		this.s = new ArrayList<Storage>();
+    		this.s.add(s);
     	}
     	
     	public String getName() {
@@ -74,7 +74,7 @@ public class NamingServer implements Service, Registration
     		return children.get(name);
     	}
     	
-    	public HashMap<String, FsNode> getChildren() {
+    	public ConcurrentHashMap<String, FsNode> getChildren() {
     		return children;
     	}
     	
@@ -87,12 +87,21 @@ public class NamingServer implements Service, Registration
     	}
     	
     	public Storage getStorage() {
-			return s;
+        	int item = new Random().nextInt(s.size());
+        	return s.get(item);   
 		}
-		
-		public Command getCommand() {
-			return c;
-		}
+    	
+    	public ArrayList<Storage> getAllStorage() {
+    		return s;
+    	}
+    	
+    	public void addStorage(Storage s) {
+    		this.s.add(s);
+    	}
+    	
+    	public void removeStorage(Storage s) {
+    		this.s.remove(s);
+    	}
     }
     
     /** Creates the naming server object.
@@ -105,8 +114,9 @@ public class NamingServer implements Service, Registration
         fsRoot = new FsNode("");
     	clientSkeleton = new Skeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT));
     	regisSkeleton = new Skeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT));
-    	storageList = new HashMap<Command, Storage>();
-    	lockList = new HashMap<Path, ReadWriteLock>();
+    	storageList = new ConcurrentHashMap<Storage, Command>();
+    	lockList = new ConcurrentHashMap<Path, ReadWriteLock>();
+    	replicationCounter = new ConcurrentHashMap<Path, Integer>();
     }
 
     /** Starts the naming server.
@@ -217,6 +227,126 @@ public class NamingServer implements Service, Registration
 
     }
     
+    private class ReplicationThread extends Thread {
+    	Path path;
+    	
+    	ReplicationThread(Path p) {
+    		path = p;
+    	}
+    	
+    	public synchronized void run() {
+			Integer origCount = replicationCounter.get(path);
+    		replicationCounter.put(path, 0);
+    		if(origCount < 20) {
+    			return;
+    		}
+    		
+    		try {
+				lock(path, false);
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				return;
+			}
+			
+			FsNode fnode = getNode(path);
+			if(fnode == null)
+				return; //incase something deleted the file before we acquired lock
+			
+			List<Storage> storages = fnode.getAllStorage();
+			
+			Set<Storage> allStorages = storageList.keySet();
+			
+			allStorages.removeAll(storages);
+			
+			if(allStorages.size() > 0) {
+			
+		    	Storage[] storageArray = allStorages.toArray(new Storage[allStorages.size()]);
+		    	int item = new Random().nextInt(storageArray.length);
+		    	Storage newStorage = storageArray[item];
+		    	
+		    	try {
+					if(storageList.get(newStorage).copy(path, fnode.getStorage())) {
+						fnode.addStorage(newStorage);
+	        			replicationCounter.put(path, 0);
+					}
+					else {
+						replicationCounter.put(path, origCount);
+					}
+				} catch (FileNotFoundException e) {
+					// TODO Auto-generated catch block
+	
+				} catch (RMIException e) {
+					// TODO Auto-generated catch block
+	
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+	
+				}
+			}
+
+			unlock(path, false);
+    	}
+    }
+    
+    private class DeletionThread extends Thread {
+    	Path path;
+    	
+    	DeletionThread(Path p) {
+    		path = p;
+    	}
+    	
+    	public synchronized void run() {
+			Integer origCount = replicationCounter.get(path);
+    		replicationCounter.put(path, 0);
+    		if(origCount == 0) {
+    			return;
+    		}
+    		
+    		try {
+				lock(path, true);
+			} catch (FileNotFoundException e) {
+				// TODO Auto-generated catch block
+				return;
+			}
+			
+			FsNode fnode = getNode(path);
+			if(fnode == null)
+				return; //incase something deleted the file before we acquired lock
+			
+			ArrayList<Storage> storages = new ArrayList<Storage>();
+			
+			//faux deep-copy so as to not mess up FsNode's list
+			for(Storage s : fnode.getAllStorage()) {
+				storages.add(s);
+			}
+			
+			if(storages.size() > 1) {
+		    	
+		    	Storage[] storageArray = storages.toArray(new Storage[storages.size()]);
+		    	int item = new Random().nextInt(storageArray.length);
+		    	Storage keepStorage = storageArray[item];
+
+		    	storages.remove(keepStorage);
+
+
+		    	
+		    	for(Storage s : storages) {
+					try {
+						deleteFromServer(path, storageList.get(s));
+					} catch (RMIException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					fnode.removeStorage(s);
+				}
+
+			}
+
+			replicationCounter.put(path, 0);
+			unlock(path, true);
+    	}
+    }
+    
     // The following public methods are documented in Service.java.
     @Override
     public void lock(Path path, boolean exclusive) throws FileNotFoundException
@@ -243,7 +373,17 @@ public class NamingServer implements Service, Registration
         for(int i=0; i<pathList.size(); i++) {
         	if(exclusive && i == pathList.size()-1) {
             	try {
-    				lockList.get(pathList.get(i)).lockWrite();
+    				if(!isDirectory(pathList.get(i))) {
+    					synchronized(NamingServer.this) {
+	    					Integer readCount = replicationCounter.get(pathList.get(i));
+	    					if(readCount == null) {
+	    						replicationCounter.put(pathList.get(i), 1);
+	    					}
+        					DeletionThread d = new DeletionThread(pathList.get(i));
+        					d.start();
+                		}
+    				}
+            		lockList.get(pathList.get(i)).lockWrite();
     			} catch (InterruptedException e) {
     				// TODO Auto-generated catch block
 
@@ -252,6 +392,19 @@ public class NamingServer implements Service, Registration
             else {
             	try {
             		lockList.get(pathList.get(i)).lockRead();
+    				if(!isDirectory(pathList.get(i))) {
+    					synchronized(NamingServer.this) {
+	    					Integer readCount = replicationCounter.get(pathList.get(i));
+	    					if(readCount == null) {
+	    						replicationCounter.put(pathList.get(i), 1);
+	    					}
+	    					if(replicationCounter.get(pathList.get(i)) >= 20) {
+	    						ReplicationThread r = new ReplicationThread(pathList.get(i));
+	    						r.start();
+	    					}
+	        				replicationCounter.put(pathList.get(i), replicationCounter.get(pathList.get(i))+1);
+                		}
+    				}
     			} catch (InterruptedException e) {
     				// TODO Auto-generated catch block
 
@@ -335,6 +488,19 @@ public class NamingServer implements Service, Registration
     	
         return !current.isFile();
     }
+    
+    private FsNode getNode(Path path) {
+		FsNode current = fsRoot;
+        
+        for(String p : path) {
+        	current = current.getChild(p);
+        	if(current == null) {
+        		return null;
+        	}
+        }
+    	
+        return current;
+    }
 
     @Override
     public String[] list(Path directory) throws FileNotFoundException
@@ -376,9 +542,9 @@ public class NamingServer implements Service, Registration
         	current = parent.getChild(p);
         	
         	if(current == null) { 
-        		Command cs = getRandomServer();
-				cs.create(file);
-				parent.addChild(p, new FsNode(p, storageList.get(cs), cs));
+        		Storage ss = getRandomServer();
+				storageList.get(ss).create(file);
+				parent.addChild(p, new FsNode(p, ss));
 				return true;
         	}
         	if(current.isFile()) {
@@ -393,9 +559,9 @@ public class NamingServer implements Service, Registration
         return false;
     }
 
-    private Command getRandomServer() {
-    	Set<Command> storageSet = storageList.keySet();
-    	Command[] storageArray = storageSet.toArray(new Command[storageSet.size()]);
+    private Storage getRandomServer() {
+    	Collection<Storage> storageSet = storageList.keySet();
+    	Storage[] storageArray = storageSet.toArray(new Storage[storageSet.size()]);
     	int item = new Random().nextInt(storageArray.length);
     	return storageArray[item];    	
     }
@@ -432,9 +598,13 @@ public class NamingServer implements Service, Registration
     @Override
     public boolean delete(Path path) throws FileNotFoundException
     {
-    	if(!path.toFile(null).exists())
+    	if(getNode(path) == null)
     		throw new FileNotFoundException("The path given does not lead to a file or directory.");
     	return false;
+    }
+    
+    private boolean deleteFromServer(Path path, Command server) throws RMIException {
+    	return server.delete(path);
     }
 
     @Override
@@ -471,7 +641,7 @@ public class NamingServer implements Service, Registration
         	throw new FileNotFoundException();
         }
         
-    	return current.getCommand();
+    	return storageList.get(current.getStorage());
     }
 
     private boolean isValidPath(Path file)
@@ -499,8 +669,12 @@ public class NamingServer implements Service, Registration
 			throw new NullPointerException();
 		}
     	
-		if(storageList.containsKey(command_stub)) {
-			throw new IllegalStateException("Duplicate registration");
+		synchronized(this) {
+			if(storageList.containsKey(client_stub)) {
+				throw new IllegalStateException("Duplicate registration");
+			}
+			
+			storageList.put(client_stub, command_stub);
 		}
 		
     	ArrayList<Path> dupeFiles = new ArrayList<Path>();
@@ -531,7 +705,7 @@ public class NamingServer implements Service, Registration
 	        	if(current == null) {
 	        		FsNode newNode;
 	        		if(p.equals(files[i].last())) {
-	        			newNode = new FsNode(p, client_stub, command_stub);
+	        			newNode = new FsNode(p, client_stub);
 	        		}
 	        		else {
 	        			newNode = new FsNode(p);
@@ -541,9 +715,7 @@ public class NamingServer implements Service, Registration
         		parent = parent.getChild(p);
 	        }
         }
-        
-		storageList.put(command_stub, client_stub);
-		
+        	
     	return dupeFiles.toArray(new Path[dupeFiles.size()]);
     }
 }
