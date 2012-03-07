@@ -186,14 +186,12 @@ public class StorageServer implements Storage, Command
     public void stop()
     {
         // TODO: Is this correct?
-    	
-    	
-    	clientSkeleton.stop();
-        commandSkeleton.stop();
-        if(clientStopped && commandStopped)
-            stopped(null);
-        
-    	
+        while(!clientStopped || !commandStopped)
+        {
+        	clientSkeleton.stop();
+            commandSkeleton.stop();
+        }
+    	stopped(null);
     }
 
     /** Called when the storage server has shut down.
