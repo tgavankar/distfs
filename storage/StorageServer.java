@@ -22,14 +22,13 @@ import naming.*;
  * local filesystem.
  */
 public class StorageServer implements Storage, Command {
-    clSkeleton<Storage> clientSkeleton;
-    cmSkeleton<Command> commandSkeleton;
+    clSkeleton clientSkeleton;
+    cmSkeleton commandSkeleton;
     private volatile boolean clientStopped = false;
     private volatile boolean commandStopped = false;
     File root;
 
-    @SuppressWarnings("hiding")
-    private class clSkeleton<Storage> extends Skeleton<Storage> {
+    private class clSkeleton extends Skeleton<Storage> {
         StorageServer server;
 
         public clSkeleton(Class<Storage> arg0, Storage arg1, StorageServer s) {
@@ -54,8 +53,7 @@ public class StorageServer implements Storage, Command {
         }
     }
 
-    @SuppressWarnings("hiding")
-    private class cmSkeleton<Command> extends Skeleton<Command> {
+    private class cmSkeleton extends Skeleton<Command> {
         StorageServer server;
 
         public cmSkeleton(Class<Command> arg0, Command arg1, StorageServer s) {
@@ -107,16 +105,16 @@ public class StorageServer implements Storage, Command {
         }
 
         if (client_port == 0) {
-            clientSkeleton = new clSkeleton<Storage>(Storage.class, this, this);
+            clientSkeleton = new clSkeleton(Storage.class, this, this);
         } else {
-            clientSkeleton = new clSkeleton<Storage>(Storage.class, this,
+            clientSkeleton = new clSkeleton(Storage.class, this,
                     new InetSocketAddress(client_port), this);
         }
 
         if (command_port == 0) {
-            commandSkeleton = new cmSkeleton<Command>(Command.class, this, this);
+            commandSkeleton = new cmSkeleton(Command.class, this, this);
         } else {
-            commandSkeleton = new cmSkeleton<Command>(Command.class, this,
+            commandSkeleton = new cmSkeleton(Command.class, this,
                     new InetSocketAddress(command_port), this);
         }
 

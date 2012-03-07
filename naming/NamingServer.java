@@ -8,7 +8,6 @@ package naming;
 import java.io.*;
 import java.net.*;
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
 import rmi.*;
@@ -41,8 +40,8 @@ import storage.*;
  */
 public class NamingServer implements Service, Registration {
     private FsNode fsRoot;
-    private Skeleton<Service> clientSkeleton;
-    private Skeleton<Registration> regisSkeleton;
+    private clSkeleton clientSkeleton;
+    private regSkeleton regisSkeleton;
     private volatile Vector<StorageStubs> storageList;
     private volatile ConcurrentHashMap<Path, ReadWriteLock> lockList;
     private volatile ConcurrentHashMap<Path, Integer> replicationCounter;
@@ -88,16 +87,15 @@ public class NamingServer implements Service, Registration {
         }
     }
 
-    @SuppressWarnings({ "hiding" })
-    private class clSkeleton<Storage> extends Skeleton<Storage> {
+    private class clSkeleton extends Skeleton<Service> {
         NamingServer server;
 
-        public clSkeleton(Class<Storage> arg0, Storage arg1, NamingServer s) {
+        public clSkeleton(Class<Service> arg0, Service arg1, NamingServer s) {
             super(arg0, arg1);
             server = s;
         }
 
-        public clSkeleton(Class<Storage> arg0, Storage arg1,
+        public clSkeleton(Class<Service> arg0, Service arg1,
                 InetSocketAddress arg2, NamingServer s) {
             super(arg0, arg1, arg2);
             server = s;
@@ -114,8 +112,7 @@ public class NamingServer implements Service, Registration {
         }
     }
 
-    @SuppressWarnings("hiding")
-    private class regSkeleton<Registration> extends Skeleton<Registration> {
+    private class regSkeleton extends Skeleton<Registration> {
         NamingServer server;
 
         public regSkeleton(Class<Registration> arg0, Registration arg1,
@@ -221,9 +218,9 @@ public class NamingServer implements Service, Registration {
      */
     public NamingServer() {
         fsRoot = new FsNode("");
-        clientSkeleton = new clSkeleton<Service>(Service.class, this,
+        clientSkeleton = new clSkeleton(Service.class, this, 
                 new InetSocketAddress(NamingStubs.SERVICE_PORT), this);
-        regisSkeleton = new regSkeleton<Registration>(Registration.class, this,
+        regisSkeleton = new regSkeleton(Registration.class, this,
                 new InetSocketAddress(NamingStubs.REGISTRATION_PORT), this);
         storageList = new Vector<StorageStubs>();
         lockList = new ConcurrentHashMap<Path, ReadWriteLock>();
