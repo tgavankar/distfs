@@ -193,6 +193,9 @@ public class NamingServer implements Service, Registration
     	}
     	
     	public synchronized StorageStubs getServer() {
+    		// Random is threadsafe as long as new Random objs are created per thread
+    		// nextInt calls next, which is sync (as is Math.random(), which next() calls)
+    		// See http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=6362070
         	int item = new Random().nextInt(s.size());
         	return s.get(item);   
 		}
