@@ -62,16 +62,8 @@ public class NamingServer implements Service, Registration {
             return s;
         }
 
-        public void setStorage(Storage s) {
-            this.s = s;
-        }
-
         public Command getCommand() {
             return c;
-        }
-
-        public void setCommand(Command c) {
-            this.c = c;
         }
 
         @Override
@@ -356,14 +348,13 @@ public class NamingServer implements Service, Registration {
             try {
                 lock(path, false);
             } catch (FileNotFoundException e) {
-                // TODO Auto-generated catch block
+                // Somebody deleted it before we could get the lock
                 return;
             }
 
             FsNode fnode = getNode(path);
             if (fnode == null)
-                return; // incase something deleted the file before we acquired
-                        // lock
+                return; // incase something deleted the file before we acquired lock
 
             List<StorageStubs> existingStorages = fnode.getAllStorage();
             List<StorageStubs> otherStorages = new ArrayList<StorageStubs>();
@@ -390,13 +381,13 @@ public class NamingServer implements Service, Registration {
                         replicationCounter.put(path, origCount);
                     }
                 } catch (FileNotFoundException e) {
-                    // TODO Auto-generated catch block
+                    // File disappeared
 
                 } catch (RMIException e) {
-                    // TODO Auto-generated catch block
+                    // Can't help it
 
                 } catch (IOException e) {
-                    // TODO Auto-generated catch block
+                    // Storage server messed up
 
                 }
             }
@@ -422,7 +413,7 @@ public class NamingServer implements Service, Registration {
             try {
                 lock(path, true);
             } catch (FileNotFoundException e) {
-                // TODO Auto-generated catch block
+                // Somebody deleted file before we got lock
                 return;
             }
 
@@ -452,7 +443,7 @@ public class NamingServer implements Service, Registration {
                         try {
                             deleteFromServer(path, s.getCommand());
                         } catch (RMIException e) {
-                            // TODO Auto-generated catch block
+                            // Can't help it
                         }
                         fnode.removeStorage(s);
                     }
@@ -502,7 +493,7 @@ public class NamingServer implements Service, Registration {
                     }
                     lockList.get(pathList.get(i)).lockWrite();
                 } catch (InterruptedException e) {
-                    // TODO Auto-generated catch block
+                    // Got a shutdown interrupt, so stop
                     return;
                 }
             } else {
@@ -526,7 +517,7 @@ public class NamingServer implements Service, Registration {
                         }
                     }
                 } catch (InterruptedException e) {
-                    // TODO Auto-generated catch block
+                    // Got a shutdown interrupt, so stop
                     return;
                 }
             }
@@ -560,7 +551,7 @@ public class NamingServer implements Service, Registration {
                 try {
                     lockList.get(pathList.get(i)).unlockWrite();
                 } catch (InterruptedException e) {
-                    // TODO Auto-generated catch block
+                    // Got a shutdown interrupt, so stop
                     return;
                 }
             } else {

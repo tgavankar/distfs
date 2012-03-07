@@ -25,6 +25,8 @@ import java.util.*;
  * the colon is reserved as a delimeter for application use.
  */
 public class Path implements Iterable<String>, Comparable<Path>, Serializable {
+
+    private static final long serialVersionUID = 9120328253115598920L;
     // Array List to hold the path
     private ArrayList<String> myPath;
 
