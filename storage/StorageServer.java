@@ -118,7 +118,7 @@ public class StorageServer implements Storage, Command
         	commandSkeleton = new cmSkeleton<Command>(Command.class, this, new InetSocketAddress(command_port), this);
         }
         
-        this.root = root;
+        this.root = root.getAbsoluteFile();
     }
 
     /** Creates a storage server, given a directory on the local filesystem.
@@ -300,7 +300,10 @@ public class StorageServer implements Storage, Command
         	return false;
         }
         
-        return deleteHelper(path.toFile(root));
+    	boolean out = deleteHelper(path.toFile(root));
+    	deleteEmptyDirs(root); // Prune all empty directories
+    	
+        return out;
     }
     
     private boolean deleteHelper(File f) {
