@@ -38,13 +38,49 @@ public class NamingServer implements Service, Registration
 	private FsNode fsRoot;
     private Skeleton<Service> clientSkeleton;
     private Skeleton<Registration> regisSkeleton;
-	private volatile ConcurrentHashMap<Storage, Command> storageList;
+	private volatile Vector<StorageStubs> storageList;
 	private volatile ConcurrentHashMap<Path, ReadWriteLock> lockList;
 	private volatile ConcurrentHashMap<Path, Integer> replicationCounter;
 	
     
 	private volatile boolean clientStopped = false;
 	private volatile boolean regisStopped = false;
+	
+	private class StorageStubs {
+		private Storage s;
+		private Command c;
+
+		public StorageStubs(Storage s, Command c) {
+			this.s = s;
+			this.c = c;
+		}
+		
+		public Storage getStorage() {
+			return s;
+		}
+
+		public void setStorage(Storage s) {
+			this.s = s;
+		}
+
+		public Command getCommand() {
+			return c;
+		}
+
+		public void setCommand(Command c) {
+			this.c = c;
+		}
+		
+		@Override
+		public boolean equals(Object obj) {
+			return this.s.equals(((StorageStubs) obj).getStorage()) && this.c.equals(((StorageStubs) obj).getCommand());
+		}
+		
+		@Override
+		public int hashCode() {
+			return 997 * ((int) this.s.toString().hashCode()) ^ 991 * ((int) this.c.toString().hashCode());
+		}
+	}
 	
 	@SuppressWarnings({ "hiding" })
 	private class clSkeleton<Storage> extends Skeleton<Storage>
@@ -106,59 +142,65 @@ public class NamingServer implements Service, Registration
     	ConcurrentHashMap<String, FsNode> children;
     	String name;
     	boolean isFile;
-    	private ArrayList<Storage> s;
+    	public volatile Vector<StorageStubs> s;
     	
     	public FsNode(String n) {
     		// Node for directory
     		children = new ConcurrentHashMap<String, FsNode>();
     		name = n;
     		isFile = false;
-    		s = new ArrayList<Storage>();
+    		s = new Vector<StorageStubs>();
     	}
     	
-    	public FsNode(String n, Storage s) {
+    	public FsNode(String n, StorageStubs s) {
     		// Node for file
     		children = null;
     		name = n;
     		isFile = true;
-    		this.s = new ArrayList<Storage>();
-    		this.s.add(s);
+    		this.s = new Vector<StorageStubs>();
+    		synchronized(this) {
+    			this.s.add(s);
+    		}
     	}
     	
-    	public String getName() {
+    	public synchronized String getName() {
     		return name;
     	}
     	
-    	public FsNode getChild(String name) {
+    	public synchronized FsNode getChild(String name) {
     		return children.get(name);
     	}
     	
-    	public ConcurrentHashMap<String, FsNode> getChildren() {
+    	public synchronized ConcurrentHashMap<String, FsNode> getChildren() {
     		return children;
     	}
     	
-    	public void addChild(String name, FsNode child) {
+    	public synchronized void addChild(String name, FsNode child) {
     		children.put(name, child);
     	}
     	
-    	public boolean isFile() {
+    	public synchronized void removeChild(Path path) {
+    		children.remove(path.toString());
+    	}
+    	
+    	public synchronized boolean isFile() {
     		return isFile;
     	}
     	
-    	public Storage getStorage() {
+    	public synchronized StorageStubs getServer() {
         	int item = new Random().nextInt(s.size());
         	return s.get(item);   
 		}
-    	
-    	public ArrayList<Storage> getAllStorage() {
+    	    	
+    	public synchronized List<StorageStubs> getAllStorage() {
     		return s;
     	}
     	
-    	public void addStorage(Storage s) {
+    	public synchronized void addStorage(StorageStubs s) {
     		this.s.add(s);
     	}
     	
-    	public void removeStorage(Storage s) {
+    	public synchronized void removeStorage(StorageStubs s) {
     		this.s.remove(s);
     	}
     }
@@ -173,7 +215,7 @@ public class NamingServer implements Service, Registration
         fsRoot = new FsNode("");
     	clientSkeleton = new clSkeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT), this);
     	regisSkeleton = new regSkeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT), this);
-    	storageList = new ConcurrentHashMap<Storage, Command>();
+    	storageList = new Vector<StorageStubs>();
     	lockList = new ConcurrentHashMap<Path, ReadWriteLock>();
     	replicationCounter = new ConcurrentHashMap<Path, Integer>();
     }
@@ -310,20 +352,23 @@ public class NamingServer implements Service, Registration
 			if(fnode == null)
 				return; //incase something deleted the file before we acquired lock
 			
-			List<Storage> storages = fnode.getAllStorage();
+			List<StorageStubs> existingStorages = fnode.getAllStorage();
+			List<StorageStubs> otherStorages = new ArrayList<StorageStubs>();
 			
-			Set<Storage> allStorages = storageList.keySet();
+			for(StorageStubs s : storageList) {
+				if(!existingStorages.contains(s)) {
+					otherStorages.add(s);
+				}
+			}
 			
-			allStorages.removeAll(storages);
+			if(otherStorages.size() > 0) {
 			
-			if(allStorages.size() > 0) {
-			
-		    	Storage[] storageArray = allStorages.toArray(new Storage[allStorages.size()]);
+		    	StorageStubs[] storageArray = otherStorages.toArray(new StorageStubs[otherStorages.size()]);
 		    	int item = new Random().nextInt(storageArray.length);
-		    	Storage newStorage = storageArray[item];
+		    	StorageStubs newStorage = storageArray[item];
 		    	
 		    	try {
-					if(storageList.get(newStorage).copy(path, fnode.getStorage())) {
+					if(newStorage.getCommand().copy(path, fnode.getServer().getStorage())) {
 						fnode.addStorage(newStorage);
 	        			replicationCounter.put(path, 0);
 					}
@@ -371,32 +416,32 @@ public class NamingServer implements Service, Registration
 			if(fnode == null)
 				return; //incase something deleted the file before we acquired lock
 			
-			ArrayList<Storage> storages = new ArrayList<Storage>();
+			ArrayList<StorageStubs> storages = new ArrayList<StorageStubs>();
 			
 			//faux deep-copy so as to not mess up FsNode's list
-			for(Storage s : fnode.getAllStorage()) {
+			for(StorageStubs s : fnode.getAllStorage()) {
 				storages.add(s);
 			}
 			
 			if(storages.size() > 1) {
 		    	
-		    	Storage[] storageArray = storages.toArray(new Storage[storages.size()]);
+		    	StorageStubs[] storageArray = storages.toArray(new StorageStubs[storages.size()]);
 		    	int item = new Random().nextInt(storageArray.length);
-		    	Storage keepStorage = storageArray[item];
+		    	StorageStubs keepStorage = storageArray[item];
 
 		    	storages.remove(keepStorage);
-
-
-		    	
-		    	for(Storage s : storages) {
-					try {
-						deleteFromServer(path, storageList.get(s));
-					} catch (RMIException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
+				
+		    	synchronized(fsRoot) {		    	
+			    	for(StorageStubs s : storages) {
+			    		try {
+							deleteFromServer(path, s.getCommand());
+						} catch (RMIException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+						fnode.removeStorage(s);	
 					}
-					fnode.removeStorage(s);
-				}
+		    	}
 
 			}
 
@@ -567,6 +612,8 @@ public class NamingServer implements Service, Registration
         	throw new FileNotFoundException();
         }
         
+        lock(directory, false);
+        
         FsNode current = fsRoot;
         
         for(String p : directory) {
@@ -574,6 +621,8 @@ public class NamingServer implements Service, Registration
         }
         
         Set<String> filenames = current.getChildren().keySet();
+        
+        unlock(directory, false);
         
         return filenames.toArray(new String[filenames.size()]);
     }
@@ -600,8 +649,8 @@ public class NamingServer implements Service, Registration
         	current = parent.getChild(p);
         	
         	if(current == null) { 
-        		Storage ss = getRandomServer();
-				storageList.get(ss).create(file);
+        		StorageStubs ss = getRandomServer();
+				ss.getCommand().create(file);
 				parent.addChild(p, new FsNode(p, ss));
 				return true;
         	}
@@ -617,9 +666,8 @@ public class NamingServer implements Service, Registration
         return false;
     }
 
-    private Storage getRandomServer() {
-    	Collection<Storage> storageSet = storageList.keySet();
-    	Storage[] storageArray = storageSet.toArray(new Storage[storageSet.size()]);
+    private StorageStubs getRandomServer() {
+    	StorageStubs[] storageArray = storageList.toArray(new StorageStubs[storageList.size()]);
     	int item = new Random().nextInt(storageArray.length);
     	return storageArray[item];    	
     }
@@ -654,15 +702,43 @@ public class NamingServer implements Service, Registration
     }
 
     @Override
-    public boolean delete(Path path) throws FileNotFoundException
+    public boolean delete(Path path) throws FileNotFoundException, RMIException
     {
-    	if(getNode(path) == null)
-    		throw new FileNotFoundException("The path given does not lead to a file or directory.");
-    	return false;
+    	
+    		FsNode fnode = getNode(path);
+
+	    	if(fnode == null)
+	    		throw new FileNotFoundException("The path given does not lead to a file or directory.");
+	    	
+	    	lock(path, true);
+	    	boolean status = true;
+    		if(isDirectory(path)) {
+    			// Just send a delete to all StorageServers. Alternative is to find all files in this folder, which can be super-expensive.
+    			synchronized(storageList) {
+    				for(StorageStubs s : storageList) {
+    					status = status && deleteFromServer(path, s.getCommand());
+    				}
+    				getNode(path.parent()).removeChild(path);
+    			}
+    		}
+    		else {
+		    	synchronized(fsRoot) {
+			    	for(StorageStubs s : fnode.getAllStorage()) {
+			    		status = status && deleteFromServer(path, s.getCommand());
+			    	}
+			    	
+			    	fnode.s.clear();
+			    	getNode(path.parent()).removeChild(path);
+		    	}
+    		}
+	    	unlock(path, true);
+	    	
+	    	return status;
+
     }
     
     private boolean deleteFromServer(Path path, Command server) throws RMIException {
-    	return server.delete(path);
+		return server.delete(path);
     }
 
     @Override
@@ -681,27 +757,9 @@ public class NamingServer implements Service, Registration
         	throw new FileNotFoundException();
         }
         
-    	return current.getStorage();
+    	return current.getServer().getStorage();
     }
     
-    private Command getCommand(Path file) throws FileNotFoundException
-    {
-        FsNode current = fsRoot;
-        
-        for(String p : file) {
-        	current = current.getChild(p);
-        	if(current == null) {
-        		throw new FileNotFoundException();
-        	}
-        }
-    	
-        if(!current.isFile()) {
-        	throw new FileNotFoundException();
-        }
-        
-    	return storageList.get(current.getStorage());
-    }
-
     private boolean isValidPath(Path file)
     {
         FsNode current = fsRoot;
@@ -727,12 +785,13 @@ public class NamingServer implements Service, Registration
 			throw new NullPointerException();
 		}
     	
+		StorageStubs ss = new StorageStubs(client_stub, command_stub);
+		
 		synchronized(this) {
-			if(storageList.containsKey(client_stub)) {
+			if(storageList.contains(ss)) {
 				throw new IllegalStateException("Duplicate registration");
 			}
-			
-			storageList.put(client_stub, command_stub);
+			storageList.add(ss);
 		}
 		
     	ArrayList<Path> dupeFiles = new ArrayList<Path>();
@@ -763,7 +822,7 @@ public class NamingServer implements Service, Registration
 	        	if(current == null) {
 	        		FsNode newNode;
 	        		if(p.equals(files[i].last())) {
-	        			newNode = new FsNode(p, client_stub);
+	        			newNode = new FsNode(p, ss);
 	        		}
 	        		else {
 	        			newNode = new FsNode(p);

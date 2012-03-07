@@ -291,7 +291,7 @@ public class StorageServer implements Storage, Command
     @Override
     public synchronized boolean delete(Path path)
     {
-        if(path.isRoot()) {
+    	if(path.isRoot() || !path.toFile(root).exists()) {
         	return false;
         }
         
