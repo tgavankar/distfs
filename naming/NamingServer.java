@@ -36,11 +36,62 @@ import storage.*;
 public class NamingServer implements Service, Registration
 {
 	private FsNode fsRoot;
-    private Skeleton<Service> clientSkeleton;
-    private Skeleton<Registration> regisSkeleton;
+    private clSkeleton<Service> clientSkeleton;
+    private regSkeleton<Registration> regisSkeleton;
 	private HashMap<Command, Storage> storageList;
 	private HashMap<Path, ReadWriteLock> lockList;
-	    
+
+	boolean clientStopped = false;
+	boolean regisStopped = false;
+	
+	@SuppressWarnings({ "hiding" })
+	private class clSkeleton<Storage> extends Skeleton<Storage>
+	{
+		
+		public clSkeleton(Class<Storage> arg0, Storage arg1) {
+			super(arg0, arg1);
+		}
+		
+		public clSkeleton(Class<Storage> arg0, Storage arg1,
+				InetSocketAddress arg2) {
+			super(arg0, arg1, arg2);
+		}
+
+		@Override
+		protected void stopped(Throwable e)
+		{
+			synchronized(clSkeleton.this)
+			{
+				clientStopped = true;
+				clSkeleton.this.notifyAll();
+			}
+		}
+	}
+	@SuppressWarnings("hiding")
+	private class regSkeleton<Registration> extends Skeleton<Registration>
+	{
+		
+
+		public regSkeleton(Class<Registration> arg0, Registration arg1) {
+			super(arg0, arg1);
+		}
+		
+		public regSkeleton(Class<Registration> arg0, Registration arg1,
+				InetSocketAddress arg2) {
+			super(arg0, arg1, arg2);
+		}
+
+		@Override
+		protected void stopped(Throwable e)
+		{
+			synchronized(regSkeleton.this)
+			{
+				regisStopped = true;
+				regSkeleton.this.notifyAll();
+			}
+		}
+	}
+	
     private class FsNode {
     	HashMap<String, FsNode> children;
     	String name;
@@ -103,8 +154,8 @@ public class NamingServer implements Service, Registration
     public NamingServer()
     {
         fsRoot = new FsNode("");
-    	clientSkeleton = new Skeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT));
-    	regisSkeleton = new Skeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT));
+    	clientSkeleton = new clSkeleton<Service>(Service.class, this, new InetSocketAddress(NamingStubs.SERVICE_PORT));
+    	regisSkeleton = new regSkeleton<Registration>(Registration.class, this, new InetSocketAddress(NamingStubs.REGISTRATION_PORT));
     	storageList = new HashMap<Command, Storage>();
     	lockList = new HashMap<Path, ReadWriteLock>();
     }
@@ -138,8 +189,11 @@ public class NamingServer implements Service, Registration
      */
     public void stop()
     {
-        clientSkeleton.stop();
-        regisSkeleton.stop();
+    	while(!clientStopped || !regisStopped)
+    	{
+    		clientSkeleton.stop();
+        	regisSkeleton.stop();
+    	}
         stopped(null);
     }
 

@@ -30,6 +30,9 @@ abstract class NamingTest extends Test
     /** Indicates that the naming server has stopped. */
     private boolean             stopped = false;
 
+	boolean clientStopped = false;
+	boolean commandStopped = false;
+	
     /** Initializes the test.
 
         <p>

@@ -22,6 +22,7 @@ public class StorageServer implements Storage, Command
 	boolean clientStopped = false;
 	boolean commandStopped = false;
 	File root;
+	@SuppressWarnings("hiding")
 	private class clSkeleton<Storage> extends Skeleton<Storage>
 	{
 		
@@ -44,6 +45,7 @@ public class StorageServer implements Storage, Command
 			}
 		}
 	}
+	@SuppressWarnings("hiding")
 	private class cmSkeleton<Command> extends Skeleton<Command>
 	{
 		
