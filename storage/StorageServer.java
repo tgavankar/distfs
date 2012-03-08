@@ -28,6 +28,7 @@ public class StorageServer implements Storage, Command {
     private volatile boolean commandStopped = false;
     File root;
 
+    // Subclass of skeleton used for stopping the client
     private class clSkeleton extends Skeleton<Storage> {
         StorageServer server;
 
@@ -53,6 +54,7 @@ public class StorageServer implements Storage, Command {
         }
     }
 
+    // Subclass of skeleton used to stop command
     private class cmSkeleton extends Skeleton<Command> {
         StorageServer server;
 
@@ -181,7 +183,8 @@ public class StorageServer implements Storage, Command {
 
         deleteEmptyDirs(root);
     }
-
+    
+    // THis is sued by start to delete any empty directories present
     private synchronized void deleteEmptyDirs(File r) {
         if (!r.isDirectory()) {
             return;

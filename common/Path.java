@@ -278,6 +278,18 @@ public class Path implements Iterable<String>, Comparable<Path>, Serializable {
      *         precedes the other path, or a positive number if this path
      *         follows the other path.
      */
+    
+    /*
+     * (non-Javadoc)
+     * @see java.lang.Comparable#compareTo(java.lang.Object)
+     * The comparison scheme for this compareTo is as follows:
+     * 	0 if the two paths are equal, which is determined by the output of the
+     * 				toString method of each path.
+     * 
+     * 	1 if the current path is a subpath of the other path provided
+     * 
+     * 	-1 is instead the other path is a subpath of out current path
+     */
     @Override
     public int compareTo(Path other) {
         if (this.equals(other))

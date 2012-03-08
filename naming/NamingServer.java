@@ -39,16 +39,33 @@ import storage.*;
  * <code>NamingStubs</code>.
  */
 public class NamingServer implements Service, Registration {
+	
+	// The Root for the tree structure that holds the information on what files 
+	// are on what server.
+	
     private FsNode fsRoot;
+    
+    // The skeletons used for RMI communivation
     private clSkeleton clientSkeleton;
     private regSkeleton regisSkeleton;
+    
+    // List of Storage Stubs that hold the information on what command is 
+    // used for what storage server
     private volatile Vector<StorageStubs> storageList;
+    
+    // List of locks that connect a path to a lock
+    // A path is used since each thread opened will have a specific path
+    // that can be used to identify it. Thread ID's cannot be used since
+    // the Skeleton spawns a different thread for each request.
     private volatile ConcurrentHashMap<Path, ReadWriteLock> lockList;
     private volatile ConcurrentHashMap<Path, Integer> replicationCounter;
-
+    
+    // Flags to know when the skeletons have stopped.
     private volatile boolean clientStopped = false;
     private volatile boolean regisStopped = false;
 
+    // Private class that stores a storage and a command to link
+    // a command to a storage for use
     private class StorageStubs {
         private Storage s;
         private Command c;
@@ -79,6 +96,8 @@ public class NamingServer implements Service, Registration {
         }
     }
 
+    // Subclasses of skeleton with the stopped() method overridden
+    // to allow us to know when the thread has stopped()
     private class clSkeleton extends Skeleton<Service> {
         NamingServer server;
 
@@ -130,6 +149,8 @@ public class NamingServer implements Service, Registration {
         }
     }
 
+    // Private class that implements a tree to keep track of which files
+    // are on which storage server
     private class FsNode {
         ConcurrentHashMap<String, FsNode> children;
         String name;
@@ -272,6 +293,9 @@ public class NamingServer implements Service, Registration {
     protected void stopped(Throwable cause) {
     }
 
+    // This class implements a simple read write lock
+    // where multiple readers can share a lock, 
+    // however, if a writer holds a lock, it is exclusive.
     public class ReadWriteLock {
 
         private int readAccesses = 0;
@@ -331,6 +355,8 @@ public class NamingServer implements Service, Registration {
 
     }
 
+    // Separate thread that is called when we want to copy a file during
+    // replication.
     private class ReplicationThread extends Thread {
         Path path;
 
@@ -395,7 +421,9 @@ public class NamingServer implements Service, Registration {
             unlock(path, false);
         }
     }
-
+    
+    // Separate thread used when we want to delete replicated files 
+    //during a write access
     private class DeletionThread extends Thread {
         Path path;
 
@@ -457,6 +485,27 @@ public class NamingServer implements Service, Registration {
     }
 
     // The following public methods are documented in Service.java.
+    
+    /*
+     * (non-Javadoc)
+     * @see naming.Service#lock(common.Path, boolean)
+     * 
+     * The locking scheme used is as follows:
+     * 	- When we get a lock request, we first take the path and get all of its
+     * 		parents.
+     * 	- Next we check to see if these parents have a ReadWriteLock, and if they do not, 
+     * 		we assign one to them. This can be used to lock those parent as we wish.
+     * 	- We then sort the list of parents so that any paths the beginning parents will
+     * 		appear first in the list.
+     * 	- Next run a loop over these parents, and do two different things depending on 
+     * 		exclusive.
+     * 	- If exclusive is true, we lock the parents with a readLock(), and lock the
+     * 		file we want with a writeLock()
+     * 	- If exclusive is false we simply readLock() the parents and the file we want.
+     * 	- Fairness is ensured by making sure that a file is given writeLock() only if
+     * 		no readLocks or writeLocks are present. readLocks are only
+     * 		given if no writeLocks are present.
+     */
     @Override
     public void lock(Path path, boolean exclusive) throws FileNotFoundException {
         if (path == null)
